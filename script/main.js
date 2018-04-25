@@ -40,54 +40,57 @@ class Game {
         this.interval = null
 
         // add event handlers
-        document.addEventListener('keydown', this.moveAvatar.bind(this))
+        this.keys = []
+        document.addEventListener('keydown', e => {
+            if (!this.keys.includes(e.key)) this.keys.push(e.key)
+        })
+        document.addEventListener('keyup', e => {
+            this.keys = this.keys.filter(key => key !== e.key)
+        })
 
     }
 
-    moveAvatar(e) {
+    moveAvatar() {
         // check for movement direction
-        if (e.key === 'ArrowUp') {
+        if (this.keys.includes('ArrowUp')) {
             this.avatar.moveTo(this.avatar.x, this.avatar.y - 10)
-            this.canvas.dy += 10
         }
-        else if (e.key === 'ArrowDown') {
+        if (this.keys.includes('ArrowDown')) {
             this.avatar.moveTo(this.avatar.x, this.avatar.y + 10)
-            this.canvas.dy -= 10
         }
-        else if (e.key === 'ArrowLeft') {
+        if (this.keys.includes('ArrowLeft')) {
             this.avatar.moveTo(this.avatar.x - 10, this.avatar.y)
-            this.canvas.dx += 10
         }
-        else if (e.key === 'ArrowRight') {
+        if (this.keys.includes('ArrowRight')) {
             this.avatar.moveTo(this.avatar.x + 10, this.avatar.y)
-            this.canvas.dx -= 10
         }
 
         // re-center the galaxy on whatever sector the avatar is now in
         if (this.avatar.x < 0) {
             this.galaxy.shiftWest()
             this.avatar.x += SECTOR_WIDTH
-            this.canvas.dx -= SECTOR_WIDTH
         }
         else if (this.avatar.x > SECTOR_WIDTH) {
             this.galaxy.shiftEast()
             this.avatar.x -= SECTOR_WIDTH
-            this.canvas.dx += SECTOR_WIDTH
         }
 
         if (this.avatar.y < 0) {
             this.galaxy.shiftNorth()
             this.avatar.y += SECTOR_HEIGHT
-            this.canvas.dy -= SECTOR_HEIGHT
         }
         else if (this.avatar.y > SECTOR_HEIGHT) {
             this.galaxy.shiftSouth()
             this.avatar.y -= SECTOR_HEIGHT
-            this.canvas.dy += SECTOR_HEIGHT
         }
+
+        this.canvas.dx = SECTOR_WIDTH / 2 - this.avatar.x
+        this.canvas.dy = SECTOR_HEIGHT / 2 - this.avatar.y
     }
 
     update() {
+        this.moveAvatar()
+
         this.canvas.update([this.galaxy, this.avatar])
 
         if (DEBUG) {
