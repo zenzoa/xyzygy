@@ -1,3 +1,5 @@
+let DEBUG = true
+const FPS = 60
 const SCREEN_WIDTH = 512
 const SCREEN_HEIGHT = 512
 const SECTOR_WIDTH = 512
@@ -9,8 +11,8 @@ const MIN_PLANET_RADIUS = MIN_STAR_RADIUS / 10
 const MAX_PLANET_RADIUS = MAX_STAR_RADIUS / 4
 const MIN_PLANET_SEPARATION = (MAX_PLANET_RADIUS - MIN_PLANET_RADIUS) / 2
 const NEXT_PLANET_POWER = 1.5
-const MIN_PLANET_SPEED = Math.PI / 1800
-const MAX_PLANET_SPEED = Math.PI / 180
+const MIN_PLANET_SPEED = Math.PI / 3600
+const MAX_PLANET_SPEED = Math.PI / 360
 
 const randFloat = (rng, min, max) => {
     return rng() * (max - min) + min
@@ -87,10 +89,16 @@ class Game {
 
     update() {
         this.canvas.update([this.galaxy, this.avatar])
+
+        if (DEBUG) {
+            this.canvas.context.font = '12px sans-serif'
+            this.canvas.context.fillStyle = 'white'
+            this.canvas.context.fillText(`${this.galaxy.x}, ${this.galaxy.y}`, 10, 22)
+        }
     }
 
-    start(fps) {
-        this.interval = setInterval(this.update.bind(this), 1000 / fps)
+    start() {
+        this.interval = setInterval(this.update.bind(this), 1000 / FPS)
     }
 
     stop() {
@@ -101,6 +109,7 @@ class Game {
 }
 
 class Canvas {
+
     constructor(el, width, height) {
         this.el = el
         this.width = width
@@ -128,9 +137,11 @@ class Canvas {
             if (child && child.update) child.update(this.context, this.dx, this.dy)
         })
     }
+
 }
 
 class RectShape {
+
     constructor(x, y, w, h, color, isStroke) {
         this.x = x
         this.y = y
@@ -157,9 +168,11 @@ class RectShape {
             context.fill()
         }
     }
+
 }
 
 class CircleShape {
+
     constructor(x, y, r, color, isStroke) {
         this.x = x
         this.y = y
@@ -185,9 +198,11 @@ class CircleShape {
             context.fill()
         }
     }
+
 }
 
 class Galaxy {
+
     constructor(x, y) {
         // coordinates of galaxy center
         this.x = x
@@ -283,9 +298,11 @@ class Galaxy {
         this.sectors.SC.update(context, dx, dy + SECTOR_HEIGHT)
         this.sectors.SE.update(context, dx + SECTOR_WIDTH, dy + SECTOR_HEIGHT)
     }
+
 }
 
 class Sector {
+
     constructor(x, y) {
         this.x = x
         this.y = y
@@ -295,20 +312,23 @@ class Sector {
         // without having to keep track of it in memory
         this.rng = new Math.seedrandom('coordinates' + x + '-' + y)
 
-        // every sector has a star
-        this.star = new Star(x, y, this.rng)
+        // some sectors have star systems
+        const hasStar = noise.simplex2(x, y) > 0
+        if (hasStar) this.star = new Star(x, y, this.rng)
 
         // temp debug thing to show edges of sector
         this.shape = new RectShape(0, 0, SECTOR_WIDTH, SECTOR_HEIGHT, '#ccc', true)
     }
 
     update(context, dx, dy) {
-        this.shape.update(context, dx, dy)
-        this.star.update(context, dx, dy)
+        if (DEBUG) this.shape.update(context, dx, dy)
+        if (this.star) this.star.update(context, dx, dy)
     }
+
 }
 
 class Star {
+
     constructor(coordX, coordY, rng) {
         this.x = randInt(rng, 0, SECTOR_WIDTH)
         this.y = randInt(rng, 0, SECTOR_HEIGHT)
@@ -329,9 +349,11 @@ class Star {
         this.shape.update(context, dx, dy)
         this.planets.forEach(planet => planet.update(context, dx, dy))
     }
+
 }
 
 class Planet {
+
     constructor(orbitX, orbitY, orbitRadius, rng) {
         this.angle = randFloat(rng, 0, Math.PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
@@ -359,9 +381,14 @@ class Planet {
         this.orbitShape.update(context, dx, dy)
         this.shape.update(context, dx, dy)
     }
+
 }
 
 window.onload = () => {
+
+    noise.seed(42)
+
     const game = new Game()
-    game.start(30)
+    game.start()
+
 }
