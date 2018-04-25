@@ -1,4 +1,32 @@
+/*
+
+TODO
+- some planets have alien civilizations
+- alien ships are boids with randomized flocking behavior
+    - ex. how much they like hanging out at their planet,
+    - how much they like checking out you/other aliens
+
+- some planets grow plants
+- you can collect plants
+- you can drop plants as offerings to aliens
+- if they like the plant they will pick it up and return to their homeworld
+- their homeworld will now have fuel crystals you can pick up to replenish your fuel supply
+- you've now "befriended" the aliens and they'll follow you more closely
+- if your fuel runs out, the game ends
+    - you get a map or something at the end, showing planets you visited and aliens you befriended
+
+- actual graphics and cool-looking planets
+
+STRETCH
+- you can leave beacons to fast-travel back to that sector
+- you can land on a planet and get a randomized landscape
+    - some planet have interesting features, they'll be some indicator while in "space mode"
+    - homeworlds show the aliens/alien architecture
+
+*/
+
 let DEBUG = true
+const PI = Math.PI
 const FPS = 60
 const SCREEN_WIDTH = 512
 const SCREEN_HEIGHT = 512
@@ -11,8 +39,9 @@ const MIN_PLANET_RADIUS = MIN_STAR_RADIUS / 10
 const MAX_PLANET_RADIUS = MAX_STAR_RADIUS / 4
 const MIN_PLANET_SEPARATION = (MAX_PLANET_RADIUS - MIN_PLANET_RADIUS) / 2
 const NEXT_PLANET_POWER = 1.5
-const MIN_PLANET_SPEED = Math.PI / 3600
-const MAX_PLANET_SPEED = Math.PI / 360
+const MIN_PLANET_SPEED = PI / 3600
+const MAX_PLANET_SPEED = PI / 360
+const AVATAR_SPEED = 10
 
 const randFloat = (rng, min, max) => {
     return rng() * (max - min) + min
@@ -51,19 +80,19 @@ class Game {
     }
 
     moveAvatar() {
+        if (!this.keys.length) return
+
         // check for movement direction
-        if (this.keys.includes('ArrowUp')) {
-            this.avatar.moveTo(this.avatar.x, this.avatar.y - 10)
-        }
-        if (this.keys.includes('ArrowDown')) {
-            this.avatar.moveTo(this.avatar.x, this.avatar.y + 10)
-        }
-        if (this.keys.includes('ArrowLeft')) {
-            this.avatar.moveTo(this.avatar.x - 10, this.avatar.y)
-        }
-        if (this.keys.includes('ArrowRight')) {
-            this.avatar.moveTo(this.avatar.x + 10, this.avatar.y)
-        }
+        let dx = 0
+        let dy = 0
+        if (this.keys.includes('ArrowUp')) dy -= 1
+        if (this.keys.includes('ArrowDown')) dy += 1
+        if (this.keys.includes('ArrowLeft')) dx -= 1
+        if (this.keys.includes('ArrowRight')) dx += 1
+        const angle = Math.atan2(dy, dx)
+        dx = Math.floor(Math.cos(angle) * AVATAR_SPEED)
+        dy = Math.floor(Math.sin(angle) * AVATAR_SPEED)
+        this.avatar.moveTo(this.avatar.x + dx, this.avatar.y + dy)
 
         // re-center the galaxy on whatever sector the avatar is now in
         if (this.avatar.x < 0) {
@@ -191,7 +220,7 @@ class CircleShape {
 
     update(context, dx, dy) {
         context.beginPath()
-        context.arc(this.x + dx, this.y + dy, this.r, 0, Math.PI * 2)
+        context.arc(this.x + dx, this.y + dy, this.r, 0, PI * 2)
         if (this.isStroke) {
             context.strokeStyle = this.color
             context.stroke()
@@ -358,7 +387,7 @@ class Star {
 class Planet {
 
     constructor(orbitX, orbitY, orbitRadius, rng) {
-        this.angle = randFloat(rng, 0, Math.PI * 2)
+        this.angle = randFloat(rng, 0, PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.orbitX = orbitX
         this.orbitY = orbitY
@@ -378,7 +407,7 @@ class Planet {
     update(context, dx, dy) {
         // move the planet along its orbital path
         this.angle += this.speed
-        if (this.angle > Math.PI * 2) this.angle -= Math.PI * 2
+        if (this.angle > PI * 2) this.angle -= PI * 2
         this.updatePosition()
 
         this.orbitShape.update(context, dx, dy)
