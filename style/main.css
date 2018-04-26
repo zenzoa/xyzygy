@@ -13,6 +13,13 @@ body {
 }
 
 canvas {
+    display: block;
     touch-action: none;
     user-select: none;
+}
+
+.frame {
+    border: 5px solid hotpink;
+    border-radius: 100%;
+    overflow: hidden;
 }

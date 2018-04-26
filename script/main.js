@@ -26,44 +26,56 @@ STRETCH
 */
 
 let DEBUG = true
+let ZOOM = 0.33
 const PI = Math.PI
 const FPS = 60
-const SCREEN_WIDTH = 512
-const SCREEN_HEIGHT = 512
-const SECTOR_WIDTH = 512
-const SECTOR_HEIGHT = 512
-const MIN_STAR_RADIUS = SECTOR_WIDTH * 0.01
-const MAX_STAR_RADIUS = SECTOR_WIDTH * 0.1
+const SCREEN_SIZE = 512
+const SECTOR_SIZE = 512
+const SYSTEM_RATE = 0.33
+const MIN_STAR_RADIUS = SECTOR_SIZE * 0.01
+const MAX_STAR_RADIUS = SECTOR_SIZE * 0.1
 const MAX_PLANETS = 6
 const MIN_PLANET_RADIUS = MIN_STAR_RADIUS / 10
 const MAX_PLANET_RADIUS = MAX_STAR_RADIUS / 4
-const MIN_PLANET_SEPARATION = (MAX_PLANET_RADIUS - MIN_PLANET_RADIUS) / 2
+const MIN_PLANET_SEPARATION = MAX_PLANET_RADIUS
 const NEXT_PLANET_POWER = 1.5
 const MIN_PLANET_SPEED = PI / 3600
 const MAX_PLANET_SPEED = PI / 360
 const AVATAR_SPEED = 10
 
-const randFloat = (rng, min, max) => {
-    return rng() * (max - min) + min
+const COLORS = {
+    'background': 'white',
+    'avatar': 'hotpink',
+    'star': 'black',
+    'planet': '#999',
+    'orbit': '#999',
+    'debug': 'hotpink'
 }
 
-const randInt = (rng, min, max) => {
-    return Math.floor(rng() * (max - min) + min)
-}
+const randFloat = (rng, min, max) => rng() * (max - min) + min
+const randInt = (rng, min, max) => Math.floor(rng() * (max - min) + min)
+const randVector = (rng, scale = 1) => [rng() * scale, rng() * scale]
+
+const add = (v1, v2) => [v1[0] + v2[0], v1[1] + v2[1]]
+const sub = (v1, v2) => [v1[0] - v2[0], v1[1] - v2[1]]
+const scale = (v, s) => [v[0] * s, v[1] * s]
 
 class Game {
 
     constructor(canvas, avatar) {
 
         // setup canvas
-        this.canvas = new Canvas(document.getElementById('canvas'), SCREEN_WIDTH, SCREEN_HEIGHT)
-        this.canvas.background = new RectShape(0, 0, SECTOR_WIDTH, SECTOR_HEIGHT, 'black')
+        this.canvas = new Canvas(document.getElementById('canvas'), SCREEN_SIZE, SCREEN_SIZE)
 
-        // start at a random point in the middle of the galaxy
-        this.galaxy = new Galaxy(randInt(Math.random, -100, 100), randInt(Math.random, -100, 100))
+        // setup galaxy
+        this.galaxy = new Galaxy()
+
+        // start at a random sector
+        // this.galaxy = new Galaxy(randInt(Math.random, -100, 100), randInt(Math.random, -100, 100))
+        this.currentSector = [0, 0]
 
         // create player avatar
-        this.avatar = new CircleShape(SECTOR_WIDTH / 2, SECTOR_HEIGHT / 2, 5, 'white')
+        this.avatar = new Shape(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2], 10, COLORS.avatar)
 
         // initialize timer interval (used when starting the game timer)
         this.interval = null
@@ -80,8 +92,6 @@ class Game {
     }
 
     moveAvatar() {
-        if (!this.keys.length) return
-
         // check for movement direction
         let dx = 0
         let dy = 0
@@ -89,43 +99,41 @@ class Game {
         if (this.keys.includes('ArrowDown')) dy += 1
         if (this.keys.includes('ArrowLeft')) dx -= 1
         if (this.keys.includes('ArrowRight')) dx += 1
-        const angle = Math.atan2(dy, dx)
-        dx = Math.floor(Math.cos(angle) * AVATAR_SPEED)
-        dy = Math.floor(Math.sin(angle) * AVATAR_SPEED)
-        this.avatar.moveTo(this.avatar.x + dx, this.avatar.y + dy)
 
-        // re-center the galaxy on whatever sector the avatar is now in
-        if (this.avatar.x < 0) {
-            this.galaxy.shiftWest()
-            this.avatar.x += SECTOR_WIDTH
-        }
-        else if (this.avatar.x > SECTOR_WIDTH) {
-            this.galaxy.shiftEast()
-            this.avatar.x -= SECTOR_WIDTH
-        }
+        if (dx !== 0 || dy !== 0) {
+            // move avatar
+            const angle = Math.atan2(dy, dx)
+            dx = Math.floor(Math.cos(angle) * AVATAR_SPEED)
+            dy = Math.floor(Math.sin(angle) * AVATAR_SPEED)
+            this.avatar.pos = add(this.avatar.pos, [dx, dy])
 
-        if (this.avatar.y < 0) {
-            this.galaxy.shiftNorth()
-            this.avatar.y += SECTOR_HEIGHT
-        }
-        else if (this.avatar.y > SECTOR_HEIGHT) {
-            this.galaxy.shiftSouth()
-            this.avatar.y -= SECTOR_HEIGHT
+            // re-center the galaxy on whatever sector the avatar is now in
+            let mx = 0
+            let my = 0
+            if (this.avatar.pos[0] < 0) mx = -1
+            else if (this.avatar.pos[0] > SECTOR_SIZE) mx = 1
+            if (this.avatar.pos[1] < 0) my = -1
+            else if (this.avatar.pos[1] > SECTOR_SIZE) my = 1
+            if (mx !== 0 || my !== 0) {
+                this.currentSector = add(this.currentSector, [mx, my])
+                this.avatar.sector = this.currentSector
+                this.avatar.pos = add(this.avatar.pos, scale([mx, my], -SECTOR_SIZE))
+            }
         }
 
-        this.canvas.dx = SECTOR_WIDTH / 2 - this.avatar.x
-        this.canvas.dy = SECTOR_HEIGHT / 2 - this.avatar.y
+        // center camera on avatar
+        this.canvas.cameraOffset = sub(this.canvas.screenCenter, this.avatar.pos)
     }
 
     update() {
         this.moveAvatar()
 
-        this.canvas.update([this.galaxy, this.avatar])
+        this.canvas.update([this.galaxy, this.avatar], this.currentSector)
 
         if (DEBUG) {
             this.canvas.context.font = '12px sans-serif'
-            this.canvas.context.fillStyle = 'white'
-            this.canvas.context.fillText(`${this.galaxy.x}, ${this.galaxy.y}`, 10, 22)
+            this.canvas.context.fillStyle = COLORS.debug
+            this.canvas.context.fillText(`${this.currentSector[0]}, ${this.currentSector[1]}`, SCREEN_SIZE / 2, 22)
         }
     }
 
@@ -148,270 +156,231 @@ class Canvas {
         this.height = height
         this.el.width = width
         this.el.height = height
+
         this.context = this.el.getContext('2d')
-        this.children = []
+
         this.interval = null
-        this.background = null
-        this.dx = SCREEN_WIDTH / 2 - SECTOR_WIDTH / 2
-        this.dy = SCREEN_HEIGHT / 2 - SECTOR_HEIGHT / 2
+
+        this.cameraOffset = [
+            SCREEN_SIZE / 2 - SECTOR_SIZE / 2,
+            SCREEN_SIZE / 2 - SECTOR_SIZE / 2
+        ]
+    }
+
+    get screenCenter() {
+        if (this._zoom !== ZOOM || !this._screenCenter) {
+            this._zoom = ZOOM
+            this._screenCenter = [
+                SCREEN_SIZE / 2 / ZOOM,
+                SCREEN_SIZE / 2 / ZOOM
+            ]
+        }
+        return this._screenCenter
     }
 
     clear() {
-        this.context.clearRect(0, 0, this.width, this.height)
+        this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
-    update(children) {
+    update(children, currentSector) {
         this.clear()
 
-        if (this.background && this.background.update) this.background.update(this.context, 0, 0)
+        // draw background
+        this.context.fillStyle = COLORS.background
+        this.context.fillRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
 
+        this.context.save()
+        this.context.scale(ZOOM, ZOOM)
+
+        // update and draw children
         children.forEach(child => {
-            if (child && child.update) child.update(this.context, this.dx, this.dy)
+            if (child && child.update) child.update(this.context, currentSector, this.cameraOffset)
         })
+
+        this.context.restore()
     }
 
 }
 
-class RectShape {
+class Shape {
 
-    constructor(x, y, w, h, color, isStroke) {
-        this.x = x
-        this.y = y
-        this.w = w
-        this.h = h
+    constructor(sector, pos, size, color, style = 'fill', type = 'circle') {
+        this.sector = sector
+        this.pos = pos
+        this.size = size
         this.color = color
-        this.isStroke = isStroke
+        this.style = style
+        this.type = type
     }
 
-    moveTo(x, y) {
-        this.x = x
-        this.y = y
+    setColor(context) {
+        context.strokeStyle = this.color
+        context.fillStyle = this.color
     }
 
-    update(context, dx, dy) {
+    drawCircle(context, pos) {
+        context.arc(pos[0], pos[1], this.size, 0, PI * 2)
+    }
+
+    drawRect(context, pos) {
+        context.rect(pos[0], pos[1], this.size, this.size)
+    }
+
+    update(context, currentSector, cameraOffset) {
+        const relativeSector = sub(this.sector, currentSector)
+        const sectorPos = scale(relativeSector, SECTOR_SIZE)
+        const relativePos = add(sectorPos, this.pos)
+        const offsetPos = add(relativePos, cameraOffset)
+
         context.beginPath()
-        context.rect(this.x + dx, this.y + dy, this.w, this.h)
-        if (this.isStroke) {
-            context.strokeStyle = this.color
-            context.stroke()
-        }
-        else {
-            context.fillStyle = this.color
-            context.fill()
-        }
-    }
+        this.setColor(context)
 
-}
+        if (this.type === 'rect') this.drawRect(context, offsetPos)
+        else  this.drawCircle(context, offsetPos)
 
-class CircleShape {
-
-    constructor(x, y, r, color, isStroke) {
-        this.x = x
-        this.y = y
-        this.r = r
-        this.color = color
-        this.isStroke = isStroke
-    }
-
-    moveTo(x, y) {
-        this.x = x
-        this.y = y
-    }
-
-    update(context, dx, dy) {
-        context.beginPath()
-        context.arc(this.x + dx, this.y + dy, this.r, 0, PI * 2)
-        if (this.isStroke) {
-            context.strokeStyle = this.color
-            context.stroke()
-        }
-        else {
-            context.fillStyle = this.color
-            context.fill()
-        }
+        if (this.style === 'stroke') context.stroke()
+        else context.fill()
     }
 
 }
 
 class Galaxy {
 
-    constructor(x, y) {
-        // coordinates of galaxy center
-        this.x = x
-        this.y = y
-
-        // set up sectors that are immediate neighbors of galaxy center
-        this.sectors = {
-            'NW': new Sector(x - 1, y - 1),
-            'NC': new Sector(x, y - 1),
-            'NE': new Sector(x + 1, y - 1),
-            'CW': new Sector(x - 1, y),
-            'CC': new Sector(x, y),
-            'CE': new Sector(x + 1, y),
-            'SW': new Sector(x - 1, y + 1),
-            'SC': new Sector(x, y + 1),
-            'SE': new Sector(x + 1, y + 1)
-        }
+    constructor() {
+        this.sectorCache = {}
+        this.sectorCacheKeys = []
+        this.maxCache = 100
+        this.range = 1
     }
 
-    shiftNorth() {
-        this.y -= 1
-        const newSectors = {
-            'NW': new Sector(this.x - 1, this.y - 1),
-            'NC': new Sector(this.x, this.y - 1),
-            'NE': new Sector(this.x + 1, this.y - 1),
-            'CW': this.sectors.NW,
-            'CC': this.sectors.NC,
-            'CE': this.sectors.NE,
-            'SW': this.sectors.CW,
-            'SC': this.sectors.CC,
-            'SE': this.sectors.CE
+    sectorsInRange(currentSector) {
+        let sectors = []
+        for (var x = -this.range; x <= this.range; x++) {
+            for (var y = -this.range; y <= this.range; y++) {
+                sectors.push(add(currentSector, [x, y]))
+            }
         }
-        this.sectors = newSectors
+        return sectors
     }
 
-    shiftSouth() {
-        this.y += 1
-        const newSectors = {
-            'NW': this.sectors.CW,
-            'NC': this.sectors.CC,
-            'NE': this.sectors.CE,
-            'CW': this.sectors.SW,
-            'CC': this.sectors.SC,
-            'CE': this.sectors.SE,
-            'SW': new Sector(this.x - 1, this.y + 1),
-            'SC': new Sector(this.x, this.y + 1),
-            'SE': new Sector(this.x + 1, this.y + 1)
-        }
-        this.sectors = newSectors
+    uncacheSector(sectorsInRange) {
+        const sectorsOutOfRange = this.sectorCacheKeys.filter(key => !sectorsInRange.includes(key))
+        if (sectorsOutOfRange.length === 0) return
+
+        const keyToRemove = sectorsOutOfRange[0]
+        this.sectorCache[keyToRemove] = undefined
+        this.sectorCacheKeys = this.sectorCacheKeys.slice(1)
     }
 
-    shiftWest() {
-        this.x -= 1
-        const newSectors = {
-            'NW': new Sector(this.x - 1, this.y - 1),
-            'NC': this.sectors.NW,
-            'NE': this.sectors.NC,
-            'CW': new Sector(this.x - 1),
-            'CC': this.sectors.CW,
-            'CE': this.sectors.CC,
-            'SW': new Sector(this.x - 1, this.y + 1),
-            'SC': this.sectors.SW,
-            'SE': this.sectors.SC
-        }
-        this.sectors = newSectors
+    cacheSector(coords, key, sectorsInRange) {
+        this.sectorCache[key] = new Sector(coords)
+        this.sectorCacheKeys.push(key)
+        if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
     }
 
-    shiftEast() {
-        this.x += 1
-        const newSectors = {
-            'NW': this.sectors.NC,
-            'NC': this.sectors.NE,
-            'NE': new Sector(this.x + 1, this.y - 1),
-            'CW': this.sectors.CC,
-            'CC': this.sectors.CE,
-            'CE': new Sector(this.x + 1),
-            'SW': this.sectors.SC,
-            'SC': this.sectors.SE,
-            'SE': new Sector(this.x + 1, this.y + 1)
-        }
-        this.sectors = newSectors
+    getSector(coords, sectorsInRange) {
+        const key = `${coords[0]}, ${coords[1]}`
+        if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
+        return this.sectorCache[key]
     }
 
-    update(context, dx, dy) {
-        // update all the sectors, giving them appropriate draw offsets
-        this.sectors.NW.update(context, dx - SECTOR_WIDTH, dy - SECTOR_HEIGHT)
-        this.sectors.NC.update(context, dx, dy - SECTOR_HEIGHT)
-        this.sectors.NE.update(context, dx + SECTOR_WIDTH, dy - SECTOR_HEIGHT)
-        this.sectors.CW.update(context, dx - SECTOR_WIDTH, dy)
-        this.sectors.CC.update(context, dx, dy)
-        this.sectors.CE.update(context, dx + SECTOR_WIDTH, dy)
-        this.sectors.SW.update(context, dx - SECTOR_WIDTH, dy + SECTOR_HEIGHT)
-        this.sectors.SC.update(context, dx, dy + SECTOR_HEIGHT)
-        this.sectors.SE.update(context, dx + SECTOR_WIDTH, dy + SECTOR_HEIGHT)
+    update(context, currentSector, cameraOffset) {
+        const sectorsInRange = this.sectorsInRange(currentSector)
+
+        sectorsInRange.forEach(coords => {
+            const sector = this.getSector(coords, sectorsInRange)
+            sector.update(context, currentSector, cameraOffset)
+        })
     }
 
 }
 
 class Sector {
 
-    constructor(x, y) {
-        this.x = x
-        this.y = y
+    constructor(coords) {
+        this.coords = coords
 
         // create a random seed based on the sector's coordinates -
         // this way the sector remains consistent even when offscreen,
         // without having to keep track of it in memory
-        this.rng = new Math.seedrandom('coordinates' + x + '-' + y)
+        this.rng = new Math.seedrandom(`coordinates: ${coords[0]}, ${coords[1]}`)
 
         // some sectors have star systems
-        const hasStar = noise.simplex2(x, y) > 0
-        if (hasStar) this.star = new Star(x, y, this.rng)
+        const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
+        if (hasStar) this.star = new Star(this)
 
         // temp debug thing to show edges of sector
-        this.shape = new RectShape(0, 0, SECTOR_WIDTH, SECTOR_HEIGHT, '#ccc', true)
+        this.shape = new Shape(coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke', 'rect')
     }
 
-    update(context, dx, dy) {
-        if (DEBUG) this.shape.update(context, dx, dy)
-        if (this.star) this.star.update(context, dx, dy)
+    update(context, currentSector, cameraOffset) {
+        if (DEBUG) this.shape.update(context, currentSector, cameraOffset)
+        if (this.star) this.star.update(context, currentSector, cameraOffset)
     }
 
 }
 
 class Star {
 
-    constructor(coordX, coordY, rng) {
-        this.x = randInt(rng, 0, SECTOR_WIDTH)
-        this.y = randInt(rng, 0, SECTOR_HEIGHT)
-        this.r = randInt(rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
-        this.shape = new CircleShape(this.x, this.y, this.r, 'hotpink')
+    constructor(sector) {
+        this.sector = sector
+        this.rng = sector.rng
+        this.coords = sector.coords
+
+        this.pos = randVector(this.rng, SECTOR_SIZE)
+        this.r = randInt(this.rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
+        this.shape = new Shape(this.coords, this.pos, this.r, COLORS.star)
 
         // give the star a bunch of orbiting planets, spaced out somewhat
-        const numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
+        const numPlanets = randInt(this.rng, 0, MAX_PLANETS + 1)
         this.planets = []
         let orbitRadius = this.r
         for (var i = 0; i < numPlanets; i++) {
-            orbitRadius += randInt(rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
-            this.planets.push(new Planet(this.x, this.y, orbitRadius, rng))
+            orbitRadius += randInt(this.rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
+            this.planets.push(new Planet(this, orbitRadius))
         }
     }
 
-    update(context, dx, dy) {
-        this.shape.update(context, dx, dy)
-        this.planets.forEach(planet => planet.update(context, dx, dy))
+    update(context, currentSector, cameraOffset) {
+        this.shape.update(context, currentSector, cameraOffset)
+        this.planets.forEach(planet => planet.update(context, currentSector, cameraOffset))
     }
 
 }
 
 class Planet {
 
-    constructor(orbitX, orbitY, orbitRadius, rng) {
-        this.angle = randFloat(rng, 0, PI * 2)
-        this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
-        this.orbitX = orbitX
-        this.orbitY = orbitY
+    constructor(star, orbitRadius) {
+        this.star = star
+        this.rng = star.rng
+        this.coords = star.coords
+
+        this.r = randInt(this.rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
+        this.angle = randFloat(this.rng, 0, PI * 2)
+        this.speed = randFloat(this.rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.orbitRadius = orbitRadius
-        this.r = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
-        this.shape = new CircleShape(0, 0, this.r, 'pink')
-        this.orbitShape = new CircleShape(orbitX, orbitY, orbitRadius, 'pink', true)
-        this.updatePosition()
+        this.pos = this.calcPos()
+
+        this.shape = new Shape(this.coords, this.pos, this.r, COLORS.planet)
+        this.orbitShape = new Shape(this.coords, this.star.pos, this.orbitRadius, COLORS.orbit, 'stroke')
     }
 
-    updatePosition() {
-        this.x = this.orbitX + Math.sin(this.angle) * this.orbitRadius
-        this.y = this.orbitY +  Math.cos(this.angle) * this.orbitRadius
-        this.shape.moveTo(this.x, this.y)
+    calcPos() {
+        const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
+        const scaledVector = scale(unitVector, this.orbitRadius)
+        const orbitalPosition = add(scaledVector, this.star.pos)
+        return orbitalPosition
     }
 
-    update(context, dx, dy) {
+    update(context, currentSector, cameraOffset) {
         // move the planet along its orbital path
         this.angle += this.speed
         if (this.angle > PI * 2) this.angle -= PI * 2
-        this.updatePosition()
+        this.pos = this.calcPos()
+        this.shape.pos = this.pos
 
-        this.orbitShape.update(context, dx, dy)
-        this.shape.update(context, dx, dy)
+        this.orbitShape.update(context, currentSector, cameraOffset)
+        this.shape.update(context, currentSector, cameraOffset)
     }
 
 }
