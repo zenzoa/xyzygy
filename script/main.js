@@ -15,7 +15,9 @@ TODO
 - if your fuel runs out, the game ends
     - you get a map or something at the end, showing planets you visited and aliens you befriended
 
-- actual graphics and cool-looking planets
+- actual graphics and cool-looking planets (use gradients)
+
+- use bell-curves for randomizations so that you have rare outliers
 
 STRETCH
 - you can leave beacons to fast-travel back to that sector
@@ -49,6 +51,7 @@ const COLORS = {
     'star': 'black',
     'planet': '#999',
     'orbit': '#999',
+    'boid': 'plum',
     'debug': 'hotpink'
 }
 
@@ -59,6 +62,14 @@ const randVector = (rng, scale = 1) => [rng() * scale, rng() * scale]
 const add = (v1, v2) => [v1[0] + v2[0], v1[1] + v2[1]]
 const sub = (v1, v2) => [v1[0] - v2[0], v1[1] - v2[1]]
 const scale = (v, s) => [v[0] * s, v[1] * s]
+const square = (v) => v[0] * v[0] + v[1] * v[1]
+const hypot = (v) => {
+    const a = Math.abs(v[0])
+    const b = Math.abs(v[1])
+    const lo = Math.min(a, b)
+    const hi = Math.max(a, b)
+    return hi + 3 * lo / 32 + Math.max(0, 2 * lo - hi) / 8 + Math.max(0, 4 * lo - hi) / 16
+}
 
 class Game {
 
@@ -77,6 +88,9 @@ class Game {
         // create player avatar
         this.avatar = new Shape(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2], 10, COLORS.avatar)
 
+        // create some test flocks
+        this.flock = new Flock(this.currentSector)
+
         // initialize timer interval (used when starting the game timer)
         this.interval = null
 
@@ -88,7 +102,6 @@ class Game {
         document.addEventListener('keyup', e => {
             this.keys = this.keys.filter(key => key !== e.key)
         })
-
     }
 
     moveAvatar() {
@@ -128,7 +141,7 @@ class Game {
     update() {
         this.moveAvatar()
 
-        this.canvas.update([this.galaxy, this.avatar], this.currentSector)
+        this.canvas.update([this.galaxy, this.avatar, this.flock], this.currentSector)
 
         if (DEBUG) {
             this.canvas.context.font = '12px sans-serif'
@@ -381,6 +394,126 @@ class Planet {
 
         this.orbitShape.update(context, currentSector, cameraOffset)
         this.shape.update(context, currentSector, cameraOffset)
+    }
+
+}
+
+class Boid {
+
+    constructor(index, flock, sector, pos) {
+        this.index = index
+        this.flock = flock
+        this.sector = sector
+        this.pos = pos
+        this.vel = [0, 0]
+        this.acc = [0, 0]
+        this.shape = new Shape(sector, randVector(Math.random, SECTOR_SIZE), 10, COLORS.boid)
+    }
+
+    calcForces() {
+        const sepForce = this.flock.sepForce
+        const cohForce = this.flock.cohForce
+        const aliForce = this.flock.aliForce
+
+        const sepDist = this.flock.sepDist
+        const cohDist = this.flock.cohDist
+        const aliDist = this.flock.aliDist
+
+        let sforce = [0, 0]
+        let cforce = [0, 0]
+        let aforce = [0, 0]
+
+        this.flock.boids.forEach(otherBoid => {
+            if (otherBoid.index === this.index) return
+            const dist = sub(this.pos, otherBoid.pos)
+            const distSquared = square(dist)
+
+            if (distSquared < sepDist) {
+                sforce = add(sforce, dist)
+            }
+            else {
+                if (distSquared < cohDist) cforce = add(cforce, dist)
+                if (distSquared < aliDist) aforce = add(aforce, otherBoid.vel)
+            }
+        })
+
+        // Separation
+        const sepLength = hypot(sforce)
+        this.acc[0] += (sepForce * sforce[0] / sepLength) || 0
+        this.acc[1] += (sepForce * sforce[1] / sepLength) || 0
+
+        // Cohesion
+        const cohLength = hypot(cforce)
+        this.acc[0] -= (cohForce * cforce[0] / cohLength) || 0
+        this.acc[1] -= (cohForce * cforce[1] / cohLength) || 0
+
+        // Alignment
+        const aliLength = hypot(aforce)
+        this.acc[0] -= (aliForce * aforce[0] / aliLength) || 0
+        this.acc[1] -= (aliForce * aforce[1] / aliLength) || 0
+    }
+
+    calcPos() {
+        // calc acceleration
+        const accLimit = this.flock.accLimit
+        if (accLimit) {
+            const accSquared = square(this.acc)
+            if (accSquared > accLimit) {
+                const accRatio = this.flock.accLimitRoot / hypot(this.acc)
+                this.acc = scale(this.acc, accRatio)
+            }
+        }
+
+        // calc velocity
+        this.vel = add(this.vel, this.acc)
+
+        const velLimit = this.flock.velLimit
+        if (velLimit) {
+            const velSquared = square(this.vel)
+            if (velSquared > velLimit) {
+                const velRatio = this.flock.velLimitRoot / hypot(this.vel)
+                this.vel = scale(this.vel, velRatio)
+            }
+        }
+
+        // calc position
+        this.pos = add(this.pos, this.vel)
+        this.shape.pos = this.pos
+    }
+
+    update(context, currentSector, cameraOffset) {
+        this.calcPos()
+        this.shape.update(context, currentSector, cameraOffset)
+    }
+
+}
+
+class Flock {
+
+    constructor(sector, options = {}) {
+        this.sector = sector
+
+        this.velLimitRoot = options.velLimit || 0
+        this.accLimitRoot = options.accLimit || 1
+        this.velLimit = Math.pow(this.velLimitRoot, 2)
+        this.accLimit = Math.pow(this.accLimitRoot, 2)
+        this.sepDist = Math.pow(options.sepDist || 60, 2)
+        this.aliDist = Math.pow(options.aliDist || 180, 2)
+        this.cohDist = Math.pow(options.cohDist || 180, 2)
+        this.sepForce = options.sepForce || 0.15
+        this.cohForce = options.cohForce || 0.1
+        this.aliForce = options.aliForce || 0.25
+
+        this.numBoids = 50
+        this.boids = []
+        for(var i = 0; i < this.numBoids; i++) {
+            this.boids.push(new Boid(i, this, sector, randVector(Math.random, 25)))
+        }
+    }
+
+    update(context, currentSector, cameraOffset) {
+        this.boids.forEach(boid => boid.calcForces())
+        this.boids.forEach(boid => boid.update(context, currentSector, cameraOffset))
     }
 
 }
