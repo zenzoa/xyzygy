@@ -43,6 +43,7 @@ const MIN_PLANET_SEPARATION = MAX_PLANET_RADIUS
 const NEXT_PLANET_POWER = 1.5
 const MIN_PLANET_SPEED = PI / 3600
 const MAX_PLANET_SPEED = PI / 360
+const ALIEN_RATE = 0.1
 const AVATAR_SPEED = 10
 
 const COLORS = {
@@ -99,7 +100,8 @@ class Game {
     constructor(canvas, avatar) {
 
         // setup canvas
-        this.canvas = new Canvas(document.getElementById('canvas'), SCREEN_SIZE, SCREEN_SIZE)
+        const el = document.getElementById('canvas')
+        this.canvas = new Canvas(el, SCREEN_SIZE, SCREEN_SIZE)
 
         // setup galaxy
         this.galaxy = new Galaxy()
@@ -111,51 +113,59 @@ class Game {
         // create player avatar
         this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
 
-        // create some test flocks
-        this.flock = new Flock(this.currentSector)
-        this.flock.attractors.push(this.avatar)
-
         // initialize timer interval (used when starting the game timer)
         this.interval = null
 
         // add event handlers
-        this.keys = []
-        document.addEventListener('keydown', e => {
-            if (!this.keys.includes(e.key)) this.keys.push(e.key)
-        })
-        document.addEventListener('keyup', e => {
-            this.keys = this.keys.filter(key => key !== e.key)
-        })
+        this.mouseDown = false
+        this.mousePos = [0, 0]
+
+        el.addEventListener('mousedown', e => this.startMoving(e))
+        el.addEventListener('mousemove', e => this.changeDirection(e))
+        document.addEventListener('mouseup', e => this.stopMoving(e))
+
+        el.addEventListener('touchstart', e => this.startMoving(e.touches[0]))
+        el.addEventListener('touchmove', e => this.changeDirection(e.touches[0]))
+        document.addEventListener('touchend', e => this.stopMoving(e.touches[0]))
+
+        el.addEventListener('contextmenu', e => e.preventDefault())
+        el.addEventListener('MSHoldVisual', e => e.preventDefault())
+    }
+
+    startMoving(e) {
+        this.mouseDown = true
+        this.changeDirection(e)
+    }
+
+    stopMoving() {
+        this.mouseDown = false
+    }
+
+    changeDirection(e) {
+        if (this.mouseDown) {
+            const x = (e.clientX - this.canvas.el.offsetLeft) / ZOOM
+            const y = (e.clientY - this.canvas.el.offsetTop) / ZOOM
+            this.mousePos = [x, y]
+        }
     }
 
     moveAvatar() {
-        // check for movement direction
-        let dx = 0
-        let dy = 0
-        if (this.keys.includes('ArrowUp')) dy -= 1
-        if (this.keys.includes('ArrowDown')) dy += 1
-        if (this.keys.includes('ArrowLeft')) dx -= 1
-        if (this.keys.includes('ArrowRight')) dx += 1
+        // get movement direction
+        if (this.mouseDown) this.avatar.target = sub(this.mousePos, this.canvas.cameraOffset)
 
-        if (dx !== 0 || dy !== 0) {
-            // move avatar
-            const angle = Math.atan2(dy, dx)
-            dx = Math.floor(Math.cos(angle) * AVATAR_SPEED)
-            dy = Math.floor(Math.sin(angle) * AVATAR_SPEED)
-            this.avatar.pos = add(this.avatar.pos, [dx, dy])
-
-            // re-center the galaxy on whatever sector the avatar is now in
-            let mx = 0
-            let my = 0
-            if (this.avatar.pos[0] < 0) mx = -1
-            else if (this.avatar.pos[0] > SECTOR_SIZE) mx = 1
-            if (this.avatar.pos[1] < 0) my = -1
-            else if (this.avatar.pos[1] > SECTOR_SIZE) my = 1
-            if (mx !== 0 || my !== 0) {
-                this.currentSector = add(this.currentSector, [mx, my])
-                this.avatar.sector = this.currentSector
-                this.avatar.pos = add(this.avatar.pos, scale([mx, my], -SECTOR_SIZE))
-            }
+        // re-center the galaxy on whatever sector the avatar is now in
+        let mx = 0
+        let my = 0
+        if (this.avatar.pos[0] < 0) mx = -1
+        else if (this.avatar.pos[0] > SECTOR_SIZE) mx = 1
+        if (this.avatar.pos[1] < 0) my = -1
+        else if (this.avatar.pos[1] > SECTOR_SIZE) my = 1
+        if (mx !== 0 || my !== 0) {
+            this.currentSector = add(this.currentSector, [mx, my])
+            this.avatar.sector = this.currentSector
+            const posOffset = scale([mx, my], -SECTOR_SIZE)
+            this.avatar.pos = add(this.avatar.pos, posOffset)
+            this.avatar.target = add(this.avatar.target, posOffset)
         }
 
         // center camera on avatar
@@ -181,21 +191,6 @@ class Game {
     stop() {
         clearInterval(this.interval)
         this.interval = null
-    }
-
-}
-
-class Avatar {
-
-    constructor(sector, pos) {
-        this.sector = sector
-        this.pos = pos
-        this.size = 10
-        this.force = 0.1
-    }
-
-    update(canvas) {
-        canvas.drawCircle(this.sector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2], this.size, COLORS.avatar)
     }
 
 }
@@ -298,7 +293,7 @@ class Galaxy {
         this.sectorCache = {}
         this.sectorCacheKeys = []
         this.maxCache = 100
-        this.range = 1
+        this.range = 2
     }
 
     sectorsInRange(currentSector) {
@@ -379,7 +374,7 @@ class Star {
         let orbitRadius = this.r
         for (var i = 0; i < numPlanets; i++) {
             orbitRadius += randInt(rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
-            this.planets.push(new Planet(sector, this.pos, orbitRadius, rng))
+            this.planets.push(new Planet(this, orbitRadius, rng))
         }
     }
 
@@ -392,15 +387,29 @@ class Star {
 
 class Planet {
 
-    constructor(sector, orbitPos, orbitRadius, rng) {
-        this.sector = sector
-        this.orbitPos = orbitPos
+    constructor(star, orbitRadius, rng) {
+        this.sector = star.sector
+        this.orbitPos = star.pos
 
         this.r = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
         this.angle = randFloat(rng, 0, PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.orbitRadius = orbitRadius
         this.pos = this.calcPos()
+
+        this.attractor = new Attractor(this.pos, Infinity, 0.1)
+        this.avoider = new Attractor(this.pos, this.r * 1.5, -1.0)
+        this.starAvoider = new Attractor(star.pos, star.r * 1.5, -1.0)
+
+        const hasFlock = rng() <= ALIEN_RATE
+        if (hasFlock) {
+            this.flock = new Flock(this.sector)
+            this.flock.attractors = [
+                this.attractor,
+                this.avoider,
+                this.starAvoider
+            ]
+        }
     }
 
     calcPos() {
@@ -411,46 +420,88 @@ class Planet {
     }
 
     update(canvas) {
+
         // move the planet along its orbital path
         this.angle += this.speed
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
+        if (this.flock) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.boid)
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
         canvas.drawCircle(this.sector, this.orbitPos, this.orbitRadius, COLORS.orbit, 'stroke')
+
+        if (this.flock) {
+            this.attractor.pos = this.pos
+            this.avoider.pos = this.pos
+            this.flock.update(canvas)
+        }
+
     }
 
 }
 
-class Boid {
-
-    constructor(index, flock, sector, pos) {
-        this.index = index
-        this.flock = flock
+class Vehicle {
+    constructor (sector, pos, maxSpeed, maxForce, seekDist) {
         this.sector = sector
-
         this.pos = pos
         this.vel = [0, 0]
         this.acc = [0, 0]
+        this.maxSpeed = maxSpeed
+        this.maxForce = maxForce
+        this.seekDist = seekDist
     }
 
     applyForce(force) {
         this.acc = add(this.acc, force)
     }
 
-    seek(target, size) {
+    seek(target) {
         const desired = sub(target, this.pos)
         const desiredDist = mag(desired)
 
         let force
-        if (desiredDist < size) {
-            const m = mapValue(desiredDist, 0, size, 0, this.flock.maxSpeed)
+        if (desiredDist < this.seekDist) {
+            const m = mapValue(desiredDist, 0, this.seekDist, 0, this.maxSpeed)
             force = setMag(desired, m)
-        } else {
-            force = setMag(desired, this.maxSpeed)
+        }
+        else force = setMag(desired, this.maxSpeed)
+
+        return limit(sub(desired, this.vel), this.maxForce)
+    }
+
+    updatePos() {
+        this.vel = limit(add(this.vel, this.acc), this.maxSpeed)
+        this.pos = add(this.pos, this.vel)
+        this.acc = [0, 0]
+    }
+}
+
+class Avatar extends Vehicle {
+
+    constructor(sector, pos) {
+        super(sector, pos, 10, 0.9, 100)
+        this.target = pos
+    }
+
+    update(canvas) {
+        if (mag(sub(this.target, this.pos)) > 1) {
+            const seekMouse = this.seek(this.target)
+            this.applyForce(seekMouse)
+            this.updatePos()
         }
 
-        return limit(sub(desired, this.vel), this.flock.maxForce)
+        if (DEBUG) canvas.drawCircle(this.sector, this.target, 10, COLORS.avatar, 'stroke')
+        canvas.drawCircle(this.sector, this.pos, 10, COLORS.avatar)
+    }
+
+}
+
+class Boid extends Vehicle {
+
+    constructor(index, flock, sector, pos) {
+        super(sector, pos, flock.maxSpeed, flock.maxForce, flock.seekDist)
+        this.index = index
+        this.flock = flock
     }
 
     applyBehaviors(boids) {
@@ -504,16 +555,20 @@ class Boid {
             coh = this.seek(cohSum, this.flock.cohDist)
         }
 
-        let attract = [0, 0]
-        this.flock.attractors.forEach(attractor => {
-            let seek = this.seek(attractor.pos, attractor.size)
-            seek = scale(seek, attractor.force)
-            attract = add(attract, seek)
-        })
-
         sep = scale(sep, this.flock.sepForce)
         ali = scale(ali, this.flock.aliForce)
         coh = scale(coh, this.flock.cohForce)
+
+        let attract = [0, 0]
+        this.flock.attractors.forEach(attractor => {
+            const diff = sub(this.pos, attractor.pos)
+            const dist = mag(diff)
+            if (dist <= attractor.dist) {
+                let seek = this.seek(attractor.pos)
+                seek = scale(seek, attractor.force)
+                attract = add(attract, seek)
+            }
+        })
 
         this.applyForce(sep)
         this.applyForce(ali)
@@ -523,21 +578,17 @@ class Boid {
 
     update(canvas) {
         this.applyBehaviors(this.flock.boids)
-
-        this.vel = limit(add(this.vel, this.acc), this.flock.maxSpeed)
-        this.pos = add(this.pos, this.vel)
-        this.acc = [0, 0]
-
-        canvas.drawCircle(this.sector, this.pos, 10, COLORS.boid)
+        this.updatePos()
+        canvas.drawCircle(this.sector, this.pos, 5, COLORS.boid)
     }
 
 }
 
 class Attractor {
     
-    constructor(pos, size, force) {
+    constructor(pos, dist, force) {
         this.pos = pos
-        this.size = size
+        this.dist = dist
         this.force = force
     }
 
@@ -548,16 +599,17 @@ class Flock {
     constructor(sector, options = {}) {
         this.sector = sector
 
-        this.maxSpeed = 4
+        this.maxSpeed = 5
         this.maxForce = 0.1
 
-        this.sepForce = 1.5
+        this.sepForce = 2.0
         this.aliForce = 1.0
         this.cohForce = 1.0
 
-        this.sepDist = 20
-        this.aliDist = 50
-        this.cohDist = 50
+        this.sepDist = 15
+        this.aliDist = 100
+        this.cohDist = 100
+        this.seekDist = 100
 
         const numBoids = 10
         this.boids = []
