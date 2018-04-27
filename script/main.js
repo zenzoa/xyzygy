@@ -151,35 +151,13 @@ class Game {
         }
     }
 
-    obstaclesInRange() {
-        const obstacles = []
-        const sectorsInRange = this.galaxy.sectorsInRange(this.currentSector)
-        sectorsInRange.forEach(coords => {
-            const sector = this.galaxy.getSector(coords, sectorsInRange)
-            if (sector.star) {
-
-                const sectorOffset = sub(this.currentSector, coords)
-                const sectorOffsetPos = scale(sectorOffset, SECTOR_SIZE)
-                const starPos = sub(sector.star.pos, sectorOffsetPos)
-                obstacles.push({ pos: starPos, r: sector.star.r })
-
-                sector.star.planets.forEach(planet => {
-                    const planetPos = sub(planet.pos, sectorOffsetPos)
-                    obstacles.push({ pos: planetPos, r: planet.r })
-                })
-                
-            }
-        })
-        return obstacles
-    }
-
     moveAvatar() {
         // get movement direction
         if (this.mouseDown) this.avatar.target = sub(this.mousePos, this.canvas.cameraOffset)
         else this.avatar.target = this.avatar.pos
 
         // get obstacles to avoid
-        this.avatar.obstacles = this.obstaclesInRange()
+        this.avatar.obstacles = this.galaxy.obstacles
 
         // re-center the galaxy on whatever sector the avatar is now in
         let mx = 0
@@ -203,7 +181,7 @@ class Game {
     update() {
         this.moveAvatar()
 
-        this.canvas.update([this.galaxy, this.avatar, this.flock], this.currentSector)
+        this.canvas.update([this.galaxy, this.avatar], this.currentSector)
 
         if (DEBUG) {
             this.canvas.context.font = '12px sans-serif'
@@ -322,6 +300,7 @@ class Galaxy {
         this.sectorCacheKeys = []
         this.maxCache = 100
         this.range = 2
+        this.obstacles = []
     }
 
     sectorsInRange(currentSector) {
@@ -356,12 +335,47 @@ class Galaxy {
     }
 
     update(canvas) {
+
         const sectorsInRange = this.sectorsInRange(canvas.currentSector)
 
+        this.obstacles = []
+
+        let stars = []
+        let planets = []
+        let orbits = []
+        let flocks = []
+
         sectorsInRange.forEach(coords => {
+
             const sector = this.getSector(coords, sectorsInRange)
             sector.update(canvas)
+
+            if (sector.star) {
+                stars.push(sector.star)
+                const sectorOffset = sub(canvas.currentSector, coords)
+                const sectorOffsetPos = scale(sectorOffset, SECTOR_SIZE)
+                const starPos = sub(sector.star.pos, sectorOffsetPos)
+                this.obstacles.push({ pos: starPos, r: sector.star.r })
+
+                sector.star.planets.forEach(planet => {
+                    planets.push(planet)
+                    const planetPos = sub(planet.pos, sectorOffsetPos)
+                    this.obstacles.push({ pos: planetPos, r: planet.r })
+
+                    orbits.push(planet.orbit)
+
+                    if (planet.flock) flocks.push(planet.flock)
+                })
+
+            }
+
         })
+
+        orbits.forEach(orbit => orbit.update(canvas))
+        stars.forEach(star => star.update(canvas))
+        planets.forEach(planet => planet.update(canvas))
+        flocks.forEach(flock => flock.update(canvas))
+
     }
 
 }
@@ -399,7 +413,7 @@ class Sector {
     update(canvas) {
         this.drawBackgroundStars(canvas)
         if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke')
-        if (this.star) this.star.update(canvas)
+        // if (this.star) this.star.update(canvas)
     }
 
 }
@@ -424,7 +438,21 @@ class Star {
 
     update(canvas) {
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.star)
-        this.planets.forEach(planet => planet.update(canvas))
+        // this.planets.forEach(planet => planet.update(canvas))
+    }
+
+}
+
+class Orbit {
+
+    constructor(sector, pos, r) {
+        this.sector = sector
+        this.pos = pos
+        this.r = r
+    }
+
+    update(canvas) {
+        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.orbit, 'stroke')
     }
 
 }
@@ -433,12 +461,12 @@ class Planet {
 
     constructor(star, orbitRadius, rng) {
         this.sector = star.sector
-        this.orbitPos = star.pos
+
+        this.orbit = new Orbit(this.sector, star.pos, orbitRadius)
 
         this.r = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
         this.angle = randFloat(rng, 0, PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
-        this.orbitRadius = orbitRadius
         this.pos = this.calcPos()
 
         const hasFlock = rng() <= ALIEN_RATE
@@ -453,8 +481,8 @@ class Planet {
 
     calcPos() {
         const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
-        const scaledVector = scale(unitVector, this.orbitRadius)
-        const orbitalPosition = add(scaledVector, this.orbitPos)
+        const scaledVector = scale(unitVector, this.orbit.r)
+        const orbitalPosition = add(scaledVector, this.orbit.pos)
         return orbitalPosition
     }
 
@@ -465,13 +493,13 @@ class Planet {
         this.pos = this.calcPos()
 
         if (this.flock) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.boid)
-        canvas.drawCircle(this.sector, this.orbitPos, this.orbitRadius, COLORS.orbit, 'stroke')
+        // canvas.drawCircle(this.sector, this.orbitPos, this.orbitRadius, COLORS.orbit, 'stroke')
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
 
         if (this.flock) {
             this.attractor.pos = this.pos
             this.avoider.pos = this.pos
-            this.flock.update(canvas)
+            // this.flock.update(canvas)
         }
     }
 
