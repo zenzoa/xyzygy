@@ -28,7 +28,7 @@ STRETCH
 */
 
 let DEBUG = true
-let ZOOM = 0.33
+let ZOOM = 0.5
 const PI = Math.PI
 const FPS = 60
 const SCREEN_SIZE = 512
@@ -63,12 +63,35 @@ const add = (v1, v2) => [v1[0] + v2[0], v1[1] + v2[1]]
 const sub = (v1, v2) => [v1[0] - v2[0], v1[1] - v2[1]]
 const scale = (v, s) => [v[0] * s, v[1] * s]
 const square = (v) => v[0] * v[0] + v[1] * v[1]
-const hypot = (v) => {
+
+const mag = (v) => {
     const a = Math.abs(v[0])
     const b = Math.abs(v[1])
     const lo = Math.min(a, b)
     const hi = Math.max(a, b)
     return hi + 3 * lo / 32 + Math.max(0, 2 * lo - hi) / 8 + Math.max(0, 4 * lo - hi) / 16
+}
+
+const normalize = (v) => {
+    const length = mag(v)
+    return scale(v, 1 / length)
+}
+
+const setMag = (v, s) => {
+    const length = mag(v)
+    const mod = s / length
+    return scale(v, mod)
+}
+
+const limit = (v, max) => {
+    const length = mag(v)
+    if (length < max) return v
+    else return setMag(v, max)
+}
+
+const mapValue = (value, lo1, hi1, lo2, hi2) => {
+    const base = (value - lo1) / (hi1 - lo1)
+    return base * (hi2 - lo2) + lo2
 }
 
 class Game {
@@ -86,10 +109,11 @@ class Game {
         this.currentSector = [0, 0]
 
         // create player avatar
-        this.avatar = new Shape(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2], 10, COLORS.avatar)
+        this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
 
         // create some test flocks
         this.flock = new Flock(this.currentSector)
+        this.flock.attractors.push(this.avatar)
 
         // initialize timer interval (used when starting the game timer)
         this.interval = null
@@ -161,6 +185,21 @@ class Game {
 
 }
 
+class Avatar {
+
+    constructor(sector, pos) {
+        this.sector = sector
+        this.pos = pos
+        this.size = 10
+        this.force = 0.1
+    }
+
+    update(canvas) {
+        canvas.drawCircle(this.sector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2], this.size, COLORS.avatar)
+    }
+
+}
+
 class Canvas {
 
     constructor(el, width, height) {
@@ -173,6 +212,8 @@ class Canvas {
         this.context = this.el.getContext('2d')
 
         this.interval = null
+
+        this.currentSector = [0, 0]
 
         this.cameraOffset = [
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2,
@@ -191,12 +232,48 @@ class Canvas {
         return this._screenCenter
     }
 
+    getOffset(sector, pos) {
+        const relativeSector = sub(sector, this.currentSector)
+        const sectorPos = scale(relativeSector, SECTOR_SIZE)
+        const relativePos = add(sectorPos, pos)
+        const offsetPos = add(relativePos, this.cameraOffset)
+        return offsetPos
+    }
+
+    setColor(color) {
+        this.context.strokeStyle = color
+        this.context.fillStyle = color
+    }
+
+    drawCircle(sector, pos, size, color, style = 'fill') {
+        pos = this.getOffset(sector, pos)
+        this.setColor(color)
+
+        this.context.beginPath()
+        this.context.arc(pos[0], pos[1], size, 0, PI * 2)
+
+        if (style === 'stroke') this.context.stroke()
+        else this.context.fill()
+    }
+
+    drawRect(sector, pos, size, color, style = 'fill') {
+        pos = this.getOffset(sector, pos)
+        this.setColor(color)
+
+        this.context.beginPath()
+        this.context.rect(pos[0], pos[1], size, size)
+
+        if (style === 'stroke') this.context.stroke()
+        else this.context.fill()
+    }
+
     clear() {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
     update(children, currentSector) {
         this.clear()
+        this.currentSector = currentSector
 
         // draw background
         this.context.fillStyle = COLORS.background
@@ -207,52 +284,10 @@ class Canvas {
 
         // update and draw children
         children.forEach(child => {
-            if (child && child.update) child.update(this.context, currentSector, this.cameraOffset)
+            if (child && child.update) child.update(this)
         })
 
         this.context.restore()
-    }
-
-}
-
-class Shape {
-
-    constructor(sector, pos, size, color, style = 'fill', type = 'circle') {
-        this.sector = sector
-        this.pos = pos
-        this.size = size
-        this.color = color
-        this.style = style
-        this.type = type
-    }
-
-    setColor(context) {
-        context.strokeStyle = this.color
-        context.fillStyle = this.color
-    }
-
-    drawCircle(context, pos) {
-        context.arc(pos[0], pos[1], this.size, 0, PI * 2)
-    }
-
-    drawRect(context, pos) {
-        context.rect(pos[0], pos[1], this.size, this.size)
-    }
-
-    update(context, currentSector, cameraOffset) {
-        const relativeSector = sub(this.sector, currentSector)
-        const sectorPos = scale(relativeSector, SECTOR_SIZE)
-        const relativePos = add(sectorPos, this.pos)
-        const offsetPos = add(relativePos, cameraOffset)
-
-        context.beginPath()
-        this.setColor(context)
-
-        if (this.type === 'rect') this.drawRect(context, offsetPos)
-        else  this.drawCircle(context, offsetPos)
-
-        if (this.style === 'stroke') context.stroke()
-        else context.fill()
     }
 
 }
@@ -297,12 +332,12 @@ class Galaxy {
         return this.sectorCache[key]
     }
 
-    update(context, currentSector, cameraOffset) {
-        const sectorsInRange = this.sectorsInRange(currentSector)
+    update(canvas) {
+        const sectorsInRange = this.sectorsInRange(canvas.currentSector)
 
         sectorsInRange.forEach(coords => {
             const sector = this.getSector(coords, sectorsInRange)
-            sector.update(context, currentSector, cameraOffset)
+            sector.update(canvas)
         })
     }
 
@@ -320,80 +355,69 @@ class Sector {
 
         // some sectors have star systems
         const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
-        if (hasStar) this.star = new Star(this)
-
-        // temp debug thing to show edges of sector
-        this.shape = new Shape(coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke', 'rect')
+        if (hasStar) this.star = new Star(this.coords, this.rng)
     }
 
-    update(context, currentSector, cameraOffset) {
-        if (DEBUG) this.shape.update(context, currentSector, cameraOffset)
-        if (this.star) this.star.update(context, currentSector, cameraOffset)
+    update(canvas) {
+        if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke')
+        if (this.star) this.star.update(canvas)
     }
 
 }
 
 class Star {
 
-    constructor(sector) {
+    constructor(sector, rng) {
         this.sector = sector
-        this.rng = sector.rng
-        this.coords = sector.coords
 
-        this.pos = randVector(this.rng, SECTOR_SIZE)
-        this.r = randInt(this.rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
-        this.shape = new Shape(this.coords, this.pos, this.r, COLORS.star)
+        this.pos = randVector(rng, SECTOR_SIZE)
+        this.r = randInt(rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
 
         // give the star a bunch of orbiting planets, spaced out somewhat
-        const numPlanets = randInt(this.rng, 0, MAX_PLANETS + 1)
+        const numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
         this.planets = []
         let orbitRadius = this.r
         for (var i = 0; i < numPlanets; i++) {
-            orbitRadius += randInt(this.rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
-            this.planets.push(new Planet(this, orbitRadius))
+            orbitRadius += randInt(rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
+            this.planets.push(new Planet(sector, this.pos, orbitRadius, rng))
         }
     }
 
-    update(context, currentSector, cameraOffset) {
-        this.shape.update(context, currentSector, cameraOffset)
-        this.planets.forEach(planet => planet.update(context, currentSector, cameraOffset))
+    update(canvas) {
+        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.star)
+        this.planets.forEach(planet => planet.update(canvas))
     }
 
 }
 
 class Planet {
 
-    constructor(star, orbitRadius) {
-        this.star = star
-        this.rng = star.rng
-        this.coords = star.coords
+    constructor(sector, orbitPos, orbitRadius, rng) {
+        this.sector = sector
+        this.orbitPos = orbitPos
 
-        this.r = randInt(this.rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
-        this.angle = randFloat(this.rng, 0, PI * 2)
-        this.speed = randFloat(this.rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
+        this.r = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
+        this.angle = randFloat(rng, 0, PI * 2)
+        this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.orbitRadius = orbitRadius
         this.pos = this.calcPos()
-
-        this.shape = new Shape(this.coords, this.pos, this.r, COLORS.planet)
-        this.orbitShape = new Shape(this.coords, this.star.pos, this.orbitRadius, COLORS.orbit, 'stroke')
     }
 
     calcPos() {
         const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
         const scaledVector = scale(unitVector, this.orbitRadius)
-        const orbitalPosition = add(scaledVector, this.star.pos)
+        const orbitalPosition = add(scaledVector, this.orbitPos)
         return orbitalPosition
     }
 
-    update(context, currentSector, cameraOffset) {
+    update(canvas) {
         // move the planet along its orbital path
         this.angle += this.speed
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
-        this.shape.pos = this.pos
 
-        this.orbitShape.update(context, currentSector, cameraOffset)
-        this.shape.update(context, currentSector, cameraOffset)
+        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
+        canvas.drawCircle(this.sector, this.orbitPos, this.orbitRadius, COLORS.orbit, 'stroke')
     }
 
 }
@@ -404,86 +428,117 @@ class Boid {
         this.index = index
         this.flock = flock
         this.sector = sector
+
         this.pos = pos
         this.vel = [0, 0]
         this.acc = [0, 0]
-        this.shape = new Shape(sector, randVector(Math.random, SECTOR_SIZE), 10, COLORS.boid)
     }
 
-    calcForces() {
-        const sepForce = this.flock.sepForce
-        const cohForce = this.flock.cohForce
-        const aliForce = this.flock.aliForce
+    applyForce(force) {
+        this.acc = add(this.acc, force)
+    }
 
-        const sepDist = this.flock.sepDist
-        const cohDist = this.flock.cohDist
-        const aliDist = this.flock.aliDist
+    seek(target, size) {
+        const desired = sub(target, this.pos)
+        const desiredDist = mag(desired)
 
-        let sforce = [0, 0]
-        let cforce = [0, 0]
-        let aforce = [0, 0]
+        let force
+        if (desiredDist < size) {
+            const m = mapValue(desiredDist, 0, size, 0, this.flock.maxSpeed)
+            force = setMag(desired, m)
+        } else {
+            force = setMag(desired, this.maxSpeed)
+        }
 
-        this.flock.boids.forEach(otherBoid => {
-            if (otherBoid.index === this.index) return
-            const dist = sub(this.pos, otherBoid.pos)
-            const distSquared = square(dist)
+        return limit(sub(desired, this.vel), this.flock.maxForce)
+    }
 
-            if (distSquared < sepDist) {
-                sforce = add(sforce, dist)
+    applyBehaviors(boids) {
+        let sep = [0, 0]
+        let sepSum = [0, 0]
+        let sepCount = 0
+
+        let ali = [0, 0]
+        let aliSum = [0, 0]
+        let aliCount = 0
+
+        let coh = [0, 0]
+        let cohSum = [0, 0]
+        let cohCount = 0
+
+        boids.forEach(other => {
+            if (other.index === this.index) return
+            const diff = sub(this.pos, other.pos)
+            const dist = mag(diff)
+
+            if (dist < this.flock.sepDist) {
+                sepSum = add(sepSum, normalize(diff))
+                sepCount++
             }
-            else {
-                if (distSquared < cohDist) cforce = add(cforce, dist)
-                if (distSquared < aliDist) aforce = add(aforce, otherBoid.vel)
+
+            if (dist < this.flock.aliDist) {
+                aliSum = add(aliSum, diff)
+                aliCount++
+            }
+
+            if (dist < this.flock.cohDist) {
+                cohSum = add(cohSum, other.pos)
+                cohCount++
             }
         })
 
-        // Separation
-        const sepLength = hypot(sforce)
-        this.acc[0] += (sepForce * sforce[0] / sepLength) || 0
-        this.acc[1] += (sepForce * sforce[1] / sepLength) || 0
+        if (sepCount > 0) {
+            sepSum = scale(sepSum, 1 / sepCount)
+            sepSum = setMag(sepSum, this.flock.maxSpeed)
+            sep = limit(sub(sepSum, this.vel), this.flock.maxForce)
+        }
 
-        // Cohesion
-        const cohLength = hypot(cforce)
-        this.acc[0] -= (cohForce * cforce[0] / cohLength) || 0
-        this.acc[1] -= (cohForce * cforce[1] / cohLength) || 0
+        if (aliCount > 0) {
+            aliSum = scale(aliSum, 1 / aliCount)
+            aliSum = setMag(aliSum, this.flock.maxSpeed)
+            ali = limit(sub(aliSum, this.vel), this.flock.maxForce)
+        }
 
-        // Alignment
-        const aliLength = hypot(aforce)
-        this.acc[0] -= (aliForce * aforce[0] / aliLength) || 0
-        this.acc[1] -= (aliForce * aforce[1] / aliLength) || 0
+        if (cohCount > 0) {
+            cohSum = scale(cohSum, 1 / cohCount)
+            coh = this.seek(cohSum, this.flock.cohDist)
+        }
+
+        let attract = [0, 0]
+        this.flock.attractors.forEach(attractor => {
+            let seek = this.seek(attractor.pos, attractor.size)
+            seek = scale(seek, attractor.force)
+            attract = add(attract, seek)
+        })
+
+        sep = scale(sep, this.flock.sepForce)
+        ali = scale(ali, this.flock.aliForce)
+        coh = scale(coh, this.flock.cohForce)
+
+        this.applyForce(sep)
+        this.applyForce(ali)
+        this.applyForce(coh)
+        this.applyForce(attract)
     }
 
-    calcPos() {
-        // calc acceleration
-        const accLimit = this.flock.accLimit
-        if (accLimit) {
-            const accSquared = square(this.acc)
-            if (accSquared > accLimit) {
-                const accRatio = this.flock.accLimitRoot / hypot(this.acc)
-                this.acc = scale(this.acc, accRatio)
-            }
-        }
+    update(canvas) {
+        this.applyBehaviors(this.flock.boids)
 
-        // calc velocity
-        this.vel = add(this.vel, this.acc)
-
-        const velLimit = this.flock.velLimit
-        if (velLimit) {
-            const velSquared = square(this.vel)
-            if (velSquared > velLimit) {
-                const velRatio = this.flock.velLimitRoot / hypot(this.vel)
-                this.vel = scale(this.vel, velRatio)
-            }
-        }
-
-        // calc position
+        this.vel = limit(add(this.vel, this.acc), this.flock.maxSpeed)
         this.pos = add(this.pos, this.vel)
-        this.shape.pos = this.pos
+        this.acc = [0, 0]
+
+        canvas.drawCircle(this.sector, this.pos, 10, COLORS.boid)
     }
 
-    update(context, currentSector, cameraOffset) {
-        this.calcPos()
-        this.shape.update(context, currentSector, cameraOffset)
+}
+
+class Attractor {
+    
+    constructor(pos, size, force) {
+        this.pos = pos
+        this.size = size
+        this.force = force
     }
 
 }
@@ -493,27 +548,28 @@ class Flock {
     constructor(sector, options = {}) {
         this.sector = sector
 
-        this.velLimitRoot = options.velLimit || 0
-        this.accLimitRoot = options.accLimit || 1
-        this.velLimit = Math.pow(this.velLimitRoot, 2)
-        this.accLimit = Math.pow(this.accLimitRoot, 2)
-        this.sepDist = Math.pow(options.sepDist || 60, 2)
-        this.aliDist = Math.pow(options.aliDist || 180, 2)
-        this.cohDist = Math.pow(options.cohDist || 180, 2)
-        this.sepForce = options.sepForce || 0.15
-        this.cohForce = options.cohForce || 0.1
-        this.aliForce = options.aliForce || 0.25
+        this.maxSpeed = 4
+        this.maxForce = 0.1
 
-        this.numBoids = 50
+        this.sepForce = 1.5
+        this.aliForce = 1.0
+        this.cohForce = 1.0
+
+        this.sepDist = 20
+        this.aliDist = 50
+        this.cohDist = 50
+
+        const numBoids = 10
         this.boids = []
-        for(var i = 0; i < this.numBoids; i++) {
-            this.boids.push(new Boid(i, this, sector, randVector(Math.random, 25)))
+        for(var i = 0; i < numBoids; i++) {
+            this.boids.push(new Boid(i, this, sector, randVector(Math.random, SECTOR_SIZE)))
         }
+
+        this.attractors = []
     }
 
-    update(context, currentSector, cameraOffset) {
-        this.boids.forEach(boid => boid.calcForces())
-        this.boids.forEach(boid => boid.update(context, currentSector, cameraOffset))
+    update(canvas) {
+        this.boids.forEach(boid => boid.update(canvas))
     }
 
 }
