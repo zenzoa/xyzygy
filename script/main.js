@@ -1,11 +1,6 @@
 /*
 
 TODO
-- some planets have alien civilizations
-- alien ships are boids with randomized flocking behavior
-    - ex. how much they like hanging out at their planet,
-    - how much they like checking out you/other aliens
-
 - some planets grow plants
 - you can collect plants
 - you can drop plants as offerings to aliens
@@ -14,9 +9,7 @@ TODO
 - you've now "befriended" the aliens and they'll follow you more closely
 - if your fuel runs out, the game ends
     - you get a map or something at the end, showing planets you visited and aliens you befriended
-
 - actual graphics and cool-looking planets (use gradients)
-
 - use bell-curves for randomizations so that you have rare outliers
 
 STRETCH
@@ -31,13 +24,13 @@ let DEBUG = true
 let ZOOM = 1
 const PI = Math.PI
 const FPS = 60
-const SCREEN_SIZE = 512
-const SECTOR_SIZE = 1024
+const SCREEN_SIZE = 600
+const SECTOR_SIZE = 600
 const SYSTEM_RATE = 0.33
 const MIN_BACKGROUND_STARS = 10
 const MAX_BACKGROUND_STARS = 20
-const MIN_STAR_RADIUS = SECTOR_SIZE * 0.02
-const MAX_STAR_RADIUS = SECTOR_SIZE * 0.1
+const MIN_STAR_RADIUS = 10
+const MAX_STAR_RADIUS = 100
 const MAX_PLANETS = 6
 const MIN_PLANET_RADIUS = MIN_STAR_RADIUS / 4
 const MAX_PLANET_RADIUS = MAX_STAR_RADIUS / 4
@@ -97,6 +90,12 @@ const mapValue = (value, lo1, hi1, lo2, hi2) => {
     return base * (hi2 - lo2) + lo2
 }
 
+const absPosition = (sector, pos) => {
+    const sectorOffset = scale(sector, SECTOR_SIZE)
+    const adjustedPos = add(sectorOffset, pos)
+    return adjustedPos
+}
+
 class Game {
 
     constructor(canvas, avatar) {
@@ -110,7 +109,7 @@ class Game {
 
         // start at a random sector
         // this.galaxy = new Galaxy(randInt(Math.random, -100, 100), randInt(Math.random, -100, 100))
-        this.currentSector = [0, 0]
+        this.currentSector = [-1, -2]
 
         // create player avatar
         this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
@@ -266,6 +265,18 @@ class Canvas {
         else this.context.fill()
     }
 
+    drawLine(sector, start, end, color) {
+        start = this.getOffset(sector, start)
+        end = this.getOffset(sector, end)
+
+        this.setColor(color)
+
+        this.context.beginPath()
+        this.context.moveTo(start[0], start[1])
+        this.context.lineTo(end[0], end[1])
+        this.context.stroke()
+    }
+
     clear() {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
@@ -351,24 +362,26 @@ class Galaxy {
 
             if (sector.star) {
                 stars.push(sector.star)
-                const sectorOffset = sub(canvas.currentSector, coords)
-                const sectorOffsetPos = scale(sectorOffset, SECTOR_SIZE)
-                const starPos = sub(sector.star.pos, sectorOffsetPos)
-                this.obstacles.push({ pos: starPos, r: sector.star.r })
+
+                this.obstacles.push(new Attractor(coords, sector.star.pos, sector.star.r, -2.0))
 
                 sector.star.planets.forEach(planet => {
                     planets.push(planet)
-                    const planetPos = sub(planet.pos, sectorOffsetPos)
-                    this.obstacles.push({ pos: planetPos, r: planet.r })
-
                     orbits.push(planet.orbit)
-
                     if (planet.flock) flocks.push(planet.flock)
+
+                    this.obstacles.push(new Attractor(coords, planet.pos, planet.r, -2.0))
                 })
 
             }
 
         })
+
+        // if (DEBUG) {
+        //     this.obstacles.forEach(o => {
+        //         canvas.drawCircle(o.sector, o.pos, o.dist + 4, 'cornflowerblue')
+        //     })
+        // }
 
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
@@ -468,7 +481,7 @@ class Planet {
         this.pos = this.calcPos()
 
         const hasFlock = rng() <= ALIEN_RATE
-        if (hasFlock) this.flock = new Flock(this.sector, this)
+        if (hasFlock) this.flock = new Flock(this.sector, this, rng)
     }
 
     calcPos() {
@@ -484,7 +497,7 @@ class Planet {
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
-        if (this.flock) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.boid)
+        if (DEBUG && this.flock) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.debug)
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
     }
 
@@ -505,18 +518,34 @@ class Vehicle {
         this.acc = add(this.acc, force)
     }
 
-    seek(target) {
-        const desired = sub(target, this.pos)
-        const desiredDist = mag(desired)
-
+    seek(targetSector, targetPos, targetDist) {
+        const diff = targetDist || sub(targetPos, this.pos)
         let force
-        if (desiredDist < this.seekDist) {
-            const m = mapValue(desiredDist, 0, this.seekDist, 0, this.maxSpeed)
-            force = setMag(desired, m)
+        if (square(diff) < this.seekDist * this.seekDist) {
+            const dist = mag(diff)
+            const m = mapValue(dist, 0, this.seekDist, 0, this.maxSpeed)
+            force = setMag(diff, m)
         }
-        else force = setMag(desired, this.maxSpeed)
+        else force = setMag(diff, this.maxSpeed)
 
-        return limit(sub(desired, this.vel), this.maxForce)
+        return limit(sub(diff, this.vel), this.maxForce)
+    }
+
+    applyAttractors(attractors, canvas) {
+        let force = [0, 0]
+        const myAbsPos = absPosition(this.sector, this.pos)
+        attractors.forEach(attractor => {
+            const attractorAbsPos = absPosition(attractor.sector, attractor.pos)
+            const diff = sub(attractorAbsPos, myAbsPos)
+            if (square(diff) < Math.pow(attractor.dist + this.r, 2)) {
+                let seek = this.seek(attractor.sector, attractor.pos, diff)
+                seek = scale(seek, attractor.force)
+                force = add(force, seek)
+
+                // if (DEBUG && canvas) canvas.drawLine([0, 0], myAbsPos, attractorAbsPos, COLORS.debug)
+            }
+        })
+        return force
     }
 
     updatePos() {
@@ -535,20 +564,11 @@ class Avatar extends Vehicle {
     }
 
     update(canvas, galaxy) {
-        const seekMouse = this.seek(this.target)
+        const seekMouse = this.seek(galaxy.currentSector, this.target)
         this.applyForce(seekMouse)
 
-        let avoid = [0, 0]
-        galaxy.obstacles.forEach(obstacle => {
-            const diff = sub(this.pos, obstacle.pos)
-            const dist = mag(diff)
-            if (dist < obstacle.r + this.r) {
-                let seek = this.seek(obstacle.pos)
-                seek = scale(seek, -2.0)
-                avoid = add(avoid, seek)
-            }
-        })
-        this.applyForce(avoid)
+        const attract = this.applyAttractors(galaxy.obstacles, canvas)
+        this.applyForce(attract)
 
         this.updatePos()
 
@@ -567,7 +587,7 @@ class Boid extends Vehicle {
         this.flock = flock
     }
 
-    applyBehaviors(boids, attractors, obstacles) {
+    applyBehaviors(boids, attractors, canvas) {
         let sep = [0, 0]
         let sepSum = [0, 0]
         let sepCount = 0
@@ -583,19 +603,19 @@ class Boid extends Vehicle {
         boids.forEach(other => {
             if (other.index === this.index) return
             const diff = sub(this.pos, other.pos)
-            const dist = mag(diff)
+            const dist = square(diff)
 
-            if (dist < this.flock.sepDist + this.r) {
+            if (dist < Math.pow(this.flock.sepDist + this.r, 2)) {
                 sepSum = add(sepSum, normalize(diff))
                 sepCount++
             }
 
-            if (dist < this.flock.aliDist + this.r) {
+            if (dist < Math.pow(this.flock.aliDist + this.r, 2)) {
                 aliSum = add(aliSum, diff)
                 aliCount++
             }
 
-            if (dist < this.flock.cohDist + this.r) {
+            if (dist < Math.pow(this.flock.cohDist + this.r, 2)) {
                 cohSum = add(cohSum, other.pos)
                 cohCount++
             }
@@ -615,44 +635,23 @@ class Boid extends Vehicle {
 
         if (cohCount > 0) {
             cohSum = scale(cohSum, 1 / cohCount)
-            coh = this.seek(cohSum, this.flock.cohDist)
+            coh = this.seek(this.sector, cohSum)
         }
 
         sep = scale(sep, this.flock.sepForce)
         ali = scale(ali, this.flock.aliForce)
         coh = scale(coh, this.flock.cohForce)
 
-        let attract = [0, 0]
-        attractors.forEach(attractor => {
-            const diff = sub(this.pos, attractor.pos)
-            const dist = mag(diff)
-            if (dist < attractor.dist + this.r) {
-                let seek = this.seek(attractor.pos)
-                seek = scale(seek, attractor.force)
-                attract = add(attract, seek)
-            }
-        })
-
-        let avoid = [0, 0]
-        obstacles.forEach(obstacle => {
-            const diff = sub(this.pos, obstacle.pos)
-            const dist = mag(diff)
-            if (dist < obstacle.r + this.r) {
-                let seek = this.seek(obstacle.pos)
-                seek = scale(seek, -2.0)
-                avoid = add(avoid, seek)
-            }
-        })
+        let attract = this.applyAttractors(attractors, canvas)
 
         this.applyForce(sep)
         this.applyForce(ali)
         this.applyForce(coh)
         this.applyForce(attract)
-        this.applyForce(avoid)
     }
 
-    update(canvas, attractors, obstacles) {
-        this.applyBehaviors(this.flock.boids, attractors, obstacles)
+    update(canvas, attractors) {
+        this.applyBehaviors(this.flock.boids, attractors, canvas)
         this.updatePos()
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.boid)
     }
@@ -661,7 +660,8 @@ class Boid extends Vehicle {
 
 class Attractor {
     
-    constructor(pos, dist, force) {
+    constructor(sector, pos, dist, force) {
+        this.sector = sector
         this.pos = pos
         this.dist = dist
         this.force = force
@@ -675,7 +675,7 @@ class Flock {
         this.sector = sector
         this.planet = planet
 
-        this.maxSpeed = 5
+        this.maxSpeed = randFloat(rng, 0.5, 10)
         this.maxForce = 0.1
 
         this.sepDist = 5
@@ -683,36 +683,40 @@ class Flock {
         this.cohDist = 100
         this.seekDist = 100
 
+        this.aliForce = randFloat(rng, 0.1, 2.0)
+        this.cohForce = randFloat(rng, 0.1, 2.0)
         this.sepForce = 2.0
-        this.aliForce = 1.0
-        this.cohForce = 1.0
 
         this.planetDist = Infinity
-        this.planetForce = 0.1
-        this.planetAttractor = new Attractor([0, 0], this.planetDist, this.planetForce)
+        this.planetForce = randFloat(rng, 0.01, 0.1)
+        this.planetAttractor = new Attractor(this.sector, [0, 0], this.planetDist, this.planetForce)
 
         this.avatarDist = 100
-        this.avatarForce = 0.5
-        this.avatarAttractor = new Attractor([0, 0], this.avatarDist, this.avatarForce)
+        this.avatarForce = randFloat(rng, 0.1, 1.0)
+        this.avatarAttractor = new Attractor([0, 0], [0, 0], this.avatarDist, this.avatarForce)
+        this.avatarObstacle = new Attractor([0, 0], [0,0], 0, -2.0)
 
-        const numBoids = 10
+        const numBoids = randInt(rng, 1, 20)
         this.boids = []
         for(var i = 0; i < numBoids; i++) {
             this.boids.push(new Boid(i, this, sector, randVector(Math.random, SECTOR_SIZE)))
         }
 
-        this.attractors = []
-        this.obstacles = []
+        this.attractors = [ this.planetAttractor, this.avatarAttractor, this.avatarObstacle ]
     }
 
     update(canvas, galaxy) {
         this.planetAttractor.pos = this.planet.pos
+
+        this.avatarAttractor.sector = galaxy.avatar.sector
         this.avatarAttractor.pos = galaxy.avatar.pos
 
-        const attractors = this.attractors.concat([ this.planetAttractor, this.avatarAttractor ])
-        const obstacles = galaxy.obstacles.concat([{ pos: galaxy.avatar.pos, r: galaxy.avatar.r }])
+        this.avatarObstacle.sector = galaxy.avatar.sector
+        this.avatarObstacle.pos = galaxy.avatar.pos
 
-        this.boids.forEach(boid => boid.update(canvas, attractors, obstacles))
+        const attractors = this.attractors.concat(galaxy.obstacles)
+
+        this.boids.forEach(boid => boid.update(canvas, attractors))
     }
 
 }
