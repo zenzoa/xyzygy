@@ -688,7 +688,7 @@ class Flock {
         this.sepForce = 2.0
 
         this.planetDist = Infinity
-        this.planetForce = randFloat(rng, 0.01, 0.1)
+        this.planetForce = randFloat(rng, 0.01, 0.1) // will want to go up to 0.5, but randomize on a curve
         this.planetAttractor = new Attractor(this.sector, [0, 0], this.planetDist, this.planetForce)
 
         this.avatarDist = 100
@@ -705,14 +705,31 @@ class Flock {
         this.attractors = [ this.planetAttractor, this.avatarAttractor, this.avatarObstacle ]
     }
 
+    center() {
+        let centerSum = [0, 0]
+        this.boids.forEach(boid => {
+            centerSum = add(centerSum, boid.pos)
+        })
+        return scale(centerSum, 1 / this.boids.length)
+    }
+
     update(canvas, galaxy) {
         this.planetAttractor.pos = this.planet.pos
+
+        // if the flock gets too far from their homeworld,
+        // increase the planet attractor
+        const center = this.center()
+        const diffToPlanet = sub(this.planet.pos, center)
+        if (square(diffToPlanet) > square(SECTOR_SIZE)) {
+            this.planetAttractor.force = 1.0
+        }
 
         this.avatarAttractor.sector = galaxy.avatar.sector
         this.avatarAttractor.pos = galaxy.avatar.pos
 
         this.avatarObstacle.sector = galaxy.avatar.sector
         this.avatarObstacle.pos = galaxy.avatar.pos
+        this.avatarObstacle.dist = galaxy.avatar.r
 
         const attractors = this.attractors.concat(galaxy.obstacles)
 
