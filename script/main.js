@@ -2,7 +2,7 @@
 
 TODO
 - increase 'gravity' of homeworld the farther away a boid is, modulated by some factor
-- use the 'wiggly' technique from Nature of Code to make lone-wandering behavior more naturalistic
+- add wandering behavior when boids are outside alignment/coherence range
 
 - some planets grow plants
 - you can collect plants
@@ -14,6 +14,7 @@ TODO
     - you get a map or something at the end, showing planets you visited and aliens you befriended
 - actual graphics
 - performance optimizations
+- make avatar slower when clicking closer to it, maybe make camera follow instead of center
 
 STRETCH
 - you can leave beacons to fast-travel back to that sector
@@ -135,6 +136,12 @@ class Game {
 
         el.addEventListener('contextmenu', e => e.preventDefault())
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
+
+        document.addEventListener('keydown', e => {
+            if (e.key === ' ') {
+                this.galaxy.gifts.push(new Gift(this.galaxy.avatar.sector, this.galaxy.avatar.pos))
+            }
+        })
     }
 
     startMoving(e) {
@@ -319,6 +326,8 @@ class Galaxy {
 
         this.obstacles = []
         this.avatar = null
+
+        this.gifts = []
     }
 
     getSector(coords, sectorsInRange) {
@@ -422,7 +431,10 @@ class Galaxy {
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
         planets.forEach(planet => planet.update(canvas, this))
+
+        this.gifts.forEach(gift => gift.update(canvas, this))
         flocks.forEach(flock => flock.update(canvas, this))
+
         this.avatar.update(canvas, this)
 
     }
@@ -555,6 +567,7 @@ class Vehicle {
         this.maxSpeed = maxSpeed
         this.maxForce = maxForce
         this.seekDist = seekDist
+        this.absPos = absPosition(sector, pos)
     }
 
     applyForce(force) {
@@ -574,19 +587,20 @@ class Vehicle {
         return limit(sub(diff, this.vel), this.maxForce)
     }
 
+    applyAttractor(sector, pos, r, callback) {
+        const attractorAbsPos = absPosition(sector, pos)
+        const diff = sub(attractorAbsPos, this.absPos)
+        if (square(diff) < Math.pow(r + this.r, 2)) callback(diff)
+    }
+
     applyAttractors(attractors, canvas) {
         let force = [0, 0]
-        const myAbsPos = absPosition(this.sector, this.pos)
         attractors.forEach(attractor => {
-            const attractorAbsPos = absPosition(attractor.sector, attractor.pos)
-            const diff = sub(attractorAbsPos, myAbsPos)
-            if (square(diff) < Math.pow(attractor.dist + this.r, 2)) {
+            this.applyAttractor(attractor.sector, attractor.pos, attractor.r, (diff) => {
                 let seek = this.seek(attractor.sector, attractor.pos, diff)
                 seek = scale(seek, attractor.force)
                 force = add(force, seek)
-
-                // if (DEBUG && canvas) canvas.drawLine([0, 0], myAbsPos, attractorAbsPos, COLORS.debug)
-            }
+            })
         })
         return force
     }
@@ -595,6 +609,7 @@ class Vehicle {
         this.vel = limit(add(this.vel, this.acc), this.maxSpeed)
         this.pos = add(this.pos, this.vel)
         this.acc = [0, 0]
+        this.absPos = absPosition(this.sector, this.pos)
     }
 }
 
@@ -630,7 +645,8 @@ class Boid extends Vehicle {
         this.flock = flock
     }
 
-    applyBehaviors(boids, attractors, canvas) {
+    applyBehaviors(canvas, galaxy, attractors) {
+        // handle flocking
         let sep = [0, 0]
         let sepSum = [0, 0]
         let sepCount = 0
@@ -643,7 +659,7 @@ class Boid extends Vehicle {
         let cohSum = [0, 0]
         let cohCount = 0
 
-        boids.forEach(other => {
+        this.flock.boids.forEach(other => {
             if (other.index === this.index) return
             const diff = sub(this.pos, other.pos)
             const dist = square(diff)
@@ -685,29 +701,30 @@ class Boid extends Vehicle {
         ali = scale(ali, this.flock.aliForce)
         coh = scale(coh, this.flock.cohForce)
 
+        // handle attractors/obstacles
         let attract = this.applyAttractors(attractors, canvas)
 
+        // pick up gifts
+        let giftsLeft = []
+        galaxy.gifts.forEach(gift => {
+            let giftTouched = false
+            this.applyAttractor(gift.sector, gift.pos, gift.r, () => (giftTouched = true))
+            if (giftTouched) this.flock.hasGift = true
+            else giftsLeft.push(gift)
+        })
+        galaxy.gifts = giftsLeft
+
+        // apply final forces
         this.applyForce(sep)
         this.applyForce(ali)
         this.applyForce(coh)
         this.applyForce(attract)
     }
 
-    update(canvas, attractors) {
-        this.applyBehaviors(this.flock.boids, attractors, canvas)
+    update(canvas, galaxy, attractors) {
+        this.applyBehaviors(canvas, galaxy, attractors)
         this.updatePos()
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.boid)
-    }
-
-}
-
-class Attractor {
-    
-    constructor(sector, pos, dist, force) {
-        this.sector = sector
-        this.pos = pos
-        this.dist = dist
-        this.force = force
     }
 
 }
@@ -718,7 +735,7 @@ class Flock {
         this.sector = sector
         this.planet = planet
 
-        this.maxSpeed = randFloat(rng, 0.5, 10)
+        this.maxSpeed = randFloat(rng, 0.5, 5)
         this.maxForce = 0.1
 
         this.sepDist = 5
@@ -739,6 +756,10 @@ class Flock {
         this.avatarAttractor = new Attractor([0, 0], [0, 0], this.avatarDist, this.avatarForce)
         this.avatarObstacle = new Attractor([0, 0], [0,0], 0, -2.0)
 
+        this.giftDist = 100
+        this.giftForce = randFloat(rng, 0.1, 1.0)
+        this.hasGift = false
+
         const numBoids = randInt(rng, 1, 20)
         this.boids = []
         for(var i = 0; i < numBoids; i++) {
@@ -746,6 +767,7 @@ class Flock {
         }
 
         this.attractors = [ this.planetAttractor, this.avatarAttractor, this.avatarObstacle ]
+        this.gifts = []
     }
 
     center() {
@@ -758,25 +780,59 @@ class Flock {
 
     update(canvas, galaxy) {
         this.planetAttractor.pos = this.planet.pos
-
-        // if the flock gets too far from their homeworld,
-        // increase the planet attractor
-        const center = this.center()
-        const diffToPlanet = sub(this.planet.pos, center)
-        if (square(diffToPlanet) > square(SECTOR_SIZE)) {
-            this.planetAttractor.force = 1.0
-        }
+        if (this.hasGift) this.planetAttractor.force = 0.5
 
         this.avatarAttractor.sector = galaxy.avatar.sector
         this.avatarAttractor.pos = galaxy.avatar.pos
+        if (this.hasGift) this.avatarAttractor.force = 0.1
 
         this.avatarObstacle.sector = galaxy.avatar.sector
         this.avatarObstacle.pos = galaxy.avatar.pos
-        this.avatarObstacle.dist = galaxy.avatar.r
+        this.avatarObstacle.r = galaxy.avatar.r
 
-        const attractors = this.attractors.concat(galaxy.obstacles)
+        this.gifts = galaxy.gifts.map(gift => (new Attractor(gift.sector, gift.pos, this.giftDist, this.giftForce)))
+        const attractors = this.attractors.concat(galaxy.obstacles).concat(this.gifts)
 
-        this.boids.forEach(boid => boid.update(canvas, attractors))
+        this.boids.forEach(boid => boid.update(canvas, galaxy, attractors))
+
+        // if flock has reached their homeworld after collecting a gift,
+        // return to normal behavior
+        if (this.hasGift) {
+            const center = this.center()
+            const diff = sub(center, this.planet.pos)
+            const dist = this.planet.r
+            if (square(diff) < dist * dist) {
+                this.hasGift = false
+                this.planetAttractor.force = this.planetForce
+                this.avatarAttractor.force = this.avatarForce
+                console.log('gift returned!')
+            }
+        }
+    }
+
+}
+
+class Attractor {
+
+    constructor(sector, pos, r, force) {
+        this.sector = sector
+        this.pos = pos
+        this.r = r
+        this.force = force
+    }
+
+}
+
+class Gift {
+
+    constructor(sector, pos) {
+        this.sector = sector
+        this.pos = pos
+        this.r = 5
+    }
+
+    update(canvas) {
+        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.avatar)
     }
 
 }
