@@ -1,6 +1,9 @@
 /*
 
 TODO
+- increase 'gravity' of homeworld the farther away a boid is, modulated by some factor
+- use the 'wiggly' technique from Nature of Code to make lone-wandering behavior more naturalistic
+
 - some planets grow plants
 - you can collect plants
 - you can drop plants as offerings to aliens
@@ -9,8 +12,8 @@ TODO
 - you've now "befriended" the aliens and they'll follow you more closely
 - if your fuel runs out, the game ends
     - you get a map or something at the end, showing planets you visited and aliens you befriended
-- actual graphics and cool-looking planets (use gradients)
-- use bell-curves for randomizations so that you have rare outliers
+- actual graphics
+- performance optimizations
 
 STRETCH
 - you can leave beacons to fast-travel back to that sector
@@ -38,7 +41,7 @@ const MIN_PLANET_SEPARATION = MAX_PLANET_RADIUS
 const NEXT_PLANET_POWER = 1.5
 const MIN_PLANET_SPEED = PI / 3600
 const MAX_PLANET_SPEED = PI / 360
-const ALIEN_RATE = 0.1
+const ALIEN_RATE = 0.5 // 0.2
 const AVATAR_SPEED = 10
 
 const COLORS = {
@@ -109,7 +112,7 @@ class Game {
 
         // start at a random sector
         // this.galaxy = new Galaxy(randInt(Math.random, -100, 100), randInt(Math.random, -100, 100))
-        this.currentSector = [-1, -2]
+        this.currentSector = [0, 0]
 
         // create player avatar
         this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
@@ -309,8 +312,19 @@ class Galaxy {
         this.sectorCacheKeys = []
         this.maxCache = 100
         this.range = 2
+
+        this.flockCache = {}
+        this.flockCacheKeys = []
+        this.maxFlockCache = 10
+
         this.obstacles = []
         this.avatar = null
+    }
+
+    getSector(coords, sectorsInRange) {
+        const key = `${coords[0]}, ${coords[1]}`
+        if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
+        return this.sectorCache[key]
     }
 
     sectorsInRange(currentSector) {
@@ -323,6 +337,20 @@ class Galaxy {
         return sectors
     }
 
+    cacheSector(coords, key, sectorsInRange) {
+        const sector = new Sector(coords)
+        this.sectorCache[key] = sector
+        this.sectorCacheKeys.push(key)
+        if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
+
+        // add flock to cache
+        if (sector.flock) {
+            this.flockCache[key] = sector.flock
+            this.flockCacheKeys.push(key)
+            if (this.flockCacheKeys.length > this.maxFlockCache) this.uncacheFlocks(sectorsInRange)
+        }
+    }
+
     uncacheSector(sectorsInRange = []) {
         const sectorsOutOfRange = this.sectorCacheKeys.filter(key => !sectorsInRange.includes(key))
         if (sectorsOutOfRange.length === 0) return
@@ -332,16 +360,30 @@ class Galaxy {
         this.sectorCacheKeys = this.sectorCacheKeys.slice(1)
     }
 
-    cacheSector(coords, key, sectorsInRange) {
-        this.sectorCache[key] = new Sector(coords)
-        this.sectorCacheKeys.push(key)
-        if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
-    }
+    uncacheFlocks(sectorsInRange = []) {
+        const range = SECTOR_SIZE * 0.5 * this.range
+        const squareRange = range * range
+        const absAvatarPos = absPosition(this.avatar.sector, this.avatar.pos)
+        let keysToRemove = []
 
-    getSector(coords, sectorsInRange) {
-        const key = `${coords[0]}, ${coords[1]}`
-        if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
-        return this.sectorCache[key]
+        this.flockCacheKeys.forEach(key => {
+            if (sectorsInRange.includes(key)) return
+
+            const flock = this.flockCache[key]
+            let boidsWithinRange = false
+
+            flock.boids.forEach(boid => {
+                const absBoidPos = absPosition(boid.sector, boid.pos)
+                const diff = sub(absAvatarPos, absBoidPos)
+                if (square(diff) < squareRange) boidsWithinRange = true
+            })
+
+            if (!boidsWithinRange) keysToRemove.push(key)
+        })
+
+        keysToRemove.forEach(keyToRemove => { this.flockCache[keyToRemove] = undefined })
+        this.flockCacheKeys = this.flockCacheKeys.filter(key => !keysToRemove.includes(key))
+        if (DEBUG && keysToRemove.length > 0) console.log('removing flocks', keysToRemove, this.flockCacheKeys)
     }
 
     update(canvas) {
@@ -353,7 +395,6 @@ class Galaxy {
         let stars = []
         let planets = []
         let orbits = []
-        let flocks = []
 
         sectorsInRange.forEach(coords => {
 
@@ -368,7 +409,6 @@ class Galaxy {
                 sector.star.planets.forEach(planet => {
                     planets.push(planet)
                     orbits.push(planet.orbit)
-                    if (planet.flock) flocks.push(planet.flock)
 
                     this.obstacles.push(new Attractor(coords, planet.pos, planet.r, -2.0))
                 })
@@ -377,11 +417,7 @@ class Galaxy {
 
         })
 
-        // if (DEBUG) {
-        //     this.obstacles.forEach(o => {
-        //         canvas.drawCircle(o.sector, o.pos, o.dist + 4, 'cornflowerblue')
-        //     })
-        // }
+        const flocks = this.flockCacheKeys.map(key => this.flockCache[key])
 
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
@@ -415,6 +451,16 @@ class Sector {
         // some sectors have star systems
         const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
         if (hasStar) this.star = new Star(this.coords, this.rng)
+
+        // some sectors have aliens
+        if (hasStar && this.star.planets.length > 0) {
+            const hasFlock = this.rng() <= ALIEN_RATE
+            if (hasFlock) {
+                const homeworldIndex = randInt(this.rng, 0, this.star.planets.length)
+                const homeworld = this.star.planets[homeworldIndex]
+                this.flock = new Flock(this.coords, homeworld, this.rng)
+            }
+        }
     }
 
     drawBackgroundStars(canvas) {
@@ -479,9 +525,6 @@ class Planet {
         this.angle = randFloat(rng, 0, PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
-
-        const hasFlock = rng() <= ALIEN_RATE
-        if (hasFlock) this.flock = new Flock(this.sector, this, rng)
     }
 
     calcPos() {
