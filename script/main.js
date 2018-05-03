@@ -33,16 +33,16 @@ const SECTOR_SIZE = 600
 const SYSTEM_RATE = 0.33
 const MIN_BACKGROUND_STARS = 10
 const MAX_BACKGROUND_STARS = 20
-const MIN_STAR_RADIUS = 10
+const MIN_STAR_RADIUS = 20
 const MAX_STAR_RADIUS = 100
 const MAX_PLANETS = 6
-const MIN_PLANET_RADIUS = MIN_STAR_RADIUS / 4
-const MAX_PLANET_RADIUS = MAX_STAR_RADIUS / 4
-const MIN_PLANET_SEPARATION = MAX_PLANET_RADIUS
+const MIN_PLANET_RADIUS = 5
+const MAX_PLANET_RADIUS = 30
+const MAX_ORBIT_RADIUS = SECTOR_SIZE
 const NEXT_PLANET_POWER = 1.5
-const MIN_PLANET_SPEED = PI / 3600
-const MAX_PLANET_SPEED = PI / 360
-const ALIEN_RATE = 0.5 // 0.2
+const MIN_PLANET_SPEED = PI / 36000
+const MAX_PLANET_SPEED = PI / 3600
+const ALIEN_RATE = 0.5
 const AVATAR_SPEED = 10
 
 const COLORS = {
@@ -98,6 +98,10 @@ const absPosition = (sector, pos) => {
     const sectorOffset = scale(sector, SECTOR_SIZE)
     const adjustedPos = add(sectorOffset, pos)
     return adjustedPos
+}
+
+const stringifyCoords = (coords) => {
+    return `${coords[0]}, ${coords[1]}`
 }
 
 class Game {
@@ -328,10 +332,11 @@ class Galaxy {
         this.avatar = null
 
         this.gifts = []
+        this.friends = {}
     }
 
     getSector(coords, sectorsInRange) {
-        const key = `${coords[0]}, ${coords[1]}`
+        const key = stringifyCoords(coords)
         if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
         return this.sectorCache[key]
     }
@@ -354,6 +359,7 @@ class Galaxy {
 
         // add flock to cache
         if (sector.flock) {
+            if (this.friends[key]) sector.flock.makeFriend()
             this.flockCache[key] = sector.flock
             this.flockCacheKeys.push(key)
             if (this.flockCacheKeys.length > this.maxFlockCache) this.uncacheFlocks(sectorsInRange)
@@ -392,7 +398,6 @@ class Galaxy {
 
         keysToRemove.forEach(keyToRemove => { this.flockCache[keyToRemove] = undefined })
         this.flockCacheKeys = this.flockCacheKeys.filter(key => !keysToRemove.includes(key))
-        if (DEBUG && keysToRemove.length > 0) console.log('removing flocks', keysToRemove, this.flockCacheKeys)
     }
 
     update(canvas) {
@@ -420,6 +425,14 @@ class Galaxy {
                     orbits.push(planet.orbit)
 
                     this.obstacles.push(new Attractor(coords, planet.pos, planet.r, -2.0))
+
+                    // check to see if avatar is touching a planet with fuel
+                    if (planet.hasFuel) {
+                        this.avatar.applyAttractor(coords, planet.pos, planet.r, () => {
+                            console.log('gain some fuel')
+                            planet.hasFuel = false
+                        })
+                    }
                 })
 
             }
@@ -430,11 +443,9 @@ class Galaxy {
 
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
-        planets.forEach(planet => planet.update(canvas, this))
-
         this.gifts.forEach(gift => gift.update(canvas, this))
         flocks.forEach(flock => flock.update(canvas, this))
-
+        planets.forEach(planet => planet.update(canvas, this))
         this.avatar.update(canvas, this)
 
     }
@@ -500,9 +511,13 @@ class Star {
         const numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
         this.planets = []
         let orbitRadius = this.r
+        let lastPlanetRadius = this.r
         for (var i = 0; i < numPlanets; i++) {
-            orbitRadius += randInt(rng, MIN_PLANET_SEPARATION, MIN_PLANET_SEPARATION * Math.pow(i + 1, NEXT_PLANET_POWER))
-            this.planets.push(new Planet(this, orbitRadius, rng))
+            const planetRadius = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
+            lastPlanetRadius = planetRadius
+            const separation = lastPlanetRadius + planetRadius
+            orbitRadius += randInt(rng, separation, separation * Math.pow(i + 1, NEXT_PLANET_POWER))
+            if (orbitRadius <= MAX_ORBIT_RADIUS) this.planets.push(new Planet(this, orbitRadius, planetRadius, rng))
         }
     }
 
@@ -528,15 +543,17 @@ class Orbit {
 
 class Planet {
 
-    constructor(star, orbitRadius, rng) {
+    constructor(star, orbitRadius, r, rng) {
         this.sector = star.sector
 
         this.orbit = new Orbit(this.sector, star.pos, orbitRadius)
 
-        this.r = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
+        this.r = r
         this.angle = randFloat(rng, 0, PI * 2)
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
+
+        this.hasFuel = false
     }
 
     calcPos() {
@@ -552,7 +569,7 @@ class Planet {
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
-        if (DEBUG && this.flock) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.debug)
+        if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, COLORS.debug, 'stroke')
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
     }
 
@@ -643,6 +660,7 @@ class Boid extends Vehicle {
         this.r = 5
         this.index = index
         this.flock = flock
+        this.hasGift = false
     }
 
     applyBehaviors(canvas, galaxy, attractors) {
@@ -709,10 +727,22 @@ class Boid extends Vehicle {
         galaxy.gifts.forEach(gift => {
             let giftTouched = false
             this.applyAttractor(gift.sector, gift.pos, gift.r, () => (giftTouched = true))
-            if (giftTouched) this.flock.hasGift = true
+            if (giftTouched) {
+                this.hasGift = true
+                this.flock.pickUpGift()
+            }
             else giftsLeft.push(gift)
         })
         galaxy.gifts = giftsLeft
+
+        // deliver gift if it touches the homeworld
+        if (this.hasGift) {
+            const planet = this.flock.planet
+            this.applyAttractor(planet.sector, planet.pos, planet.r, () => {
+                this.hasGift = false
+                this.flock.deliverGift(galaxy)
+            })
+        }
 
         // apply final forces
         this.applyForce(sep)
@@ -724,6 +754,7 @@ class Boid extends Vehicle {
     update(canvas, galaxy, attractors) {
         this.applyBehaviors(canvas, galaxy, attractors)
         this.updatePos()
+        if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.debug, 'stroke')
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.boid)
     }
 
@@ -735,7 +766,7 @@ class Flock {
         this.sector = sector
         this.planet = planet
 
-        this.maxSpeed = randFloat(rng, 0.5, 5)
+        this.maxSpeed = randFloat(rng, 0.1, 5)
         this.maxForce = 0.1
 
         this.sepDist = 5
@@ -743,22 +774,22 @@ class Flock {
         this.cohDist = 100
         this.seekDist = 100
 
-        this.aliForce = randFloat(rng, 0.1, 2.0)
-        this.cohForce = randFloat(rng, 0.1, 2.0)
+        this.aliForce = randFloat(rng, 0.1, 1.0)
+        this.cohForce = randFloat(rng, 0.1, 1.0)
         this.sepForce = 2.0
 
         this.planetDist = Infinity
         this.planetForce = randFloat(rng, 0.01, 0.1) // will want to go up to 0.5, but randomize on a curve
         this.planetAttractor = new Attractor(this.sector, [0, 0], this.planetDist, this.planetForce)
 
-        this.avatarDist = 100
-        this.avatarForce = randFloat(rng, 0.1, 1.0)
+        this.avatarDist = randInt(rng, 10, SECTOR_SIZE / 2)
+        this.avatarForce = randFloat(rng, 0.01, 0.5)
         this.avatarAttractor = new Attractor([0, 0], [0, 0], this.avatarDist, this.avatarForce)
         this.avatarObstacle = new Attractor([0, 0], [0,0], 0, -2.0)
 
         this.giftDist = 100
         this.giftForce = randFloat(rng, 0.1, 1.0)
-        this.hasGift = false
+        this.isFriend = false
 
         const numBoids = randInt(rng, 1, 20)
         this.boids = []
@@ -778,36 +809,41 @@ class Flock {
         return scale(centerSum, 1 / this.boids.length)
     }
 
-    update(canvas, galaxy) {
+    pickUpGift() {
+        this.planetAttractor.force = 0.5
+        this.avatarAttractor.force = 0.1
+    }
+
+    deliverGift(galaxy) {
+        this.planetAttractor.force = this.planetForce
+        this.planet.hasFuel = true
+        this.makeFriend()
+        galaxy.friends[stringifyCoords(this.sector)] = true
+    }
+
+    makeFriend() {
+        this.isFriend = true
+        this.avatarAttractor.force = this.avatarForce * 2
+    }
+
+    updateAttractors(galaxy) {
         this.planetAttractor.pos = this.planet.pos
-        if (this.hasGift) this.planetAttractor.force = 0.5
 
         this.avatarAttractor.sector = galaxy.avatar.sector
         this.avatarAttractor.pos = galaxy.avatar.pos
-        if (this.hasGift) this.avatarAttractor.force = 0.1
 
         this.avatarObstacle.sector = galaxy.avatar.sector
         this.avatarObstacle.pos = galaxy.avatar.pos
         this.avatarObstacle.r = galaxy.avatar.r
 
         this.gifts = galaxy.gifts.map(gift => (new Attractor(gift.sector, gift.pos, this.giftDist, this.giftForce)))
+    }
+
+    update(canvas, galaxy) {
+        this.updateAttractors(galaxy)
         const attractors = this.attractors.concat(galaxy.obstacles).concat(this.gifts)
 
         this.boids.forEach(boid => boid.update(canvas, galaxy, attractors))
-
-        // if flock has reached their homeworld after collecting a gift,
-        // return to normal behavior
-        if (this.hasGift) {
-            const center = this.center()
-            const diff = sub(center, this.planet.pos)
-            const dist = this.planet.r
-            if (square(diff) < dist * dist) {
-                this.hasGift = false
-                this.planetAttractor.force = this.planetForce
-                this.avatarAttractor.force = this.avatarForce
-                console.log('gift returned!')
-            }
-        }
     }
 
 }
@@ -832,7 +868,7 @@ class Gift {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.avatar)
+        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.debug)
     }
 
 }
