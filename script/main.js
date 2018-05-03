@@ -27,6 +27,8 @@ STRETCH
 let DEBUG = true
 let ZOOM = 1
 const PI = Math.PI
+const RADIANS = (PI * 2) / 360
+const DEGREES = 360 / (PI * 2)
 const FPS = 60
 const SCREEN_SIZE = 600
 const SECTOR_SIZE = 600
@@ -44,6 +46,21 @@ const MIN_PLANET_SPEED = PI / 36000
 const MAX_PLANET_SPEED = PI / 3600
 const ALIEN_RATE = 0.5
 const AVATAR_SPEED = 10
+
+// sin/cos lookup tables
+let sinValues = []
+let cosValues = []
+for (var i = 0; i < 3600; i++) {
+    const angle = (i / 10) * RADIANS
+    sinValues[i] = Math.sin(angle)
+    cosValues[i] = Math.cos(angle)
+}
+const sin = (angle) => {
+    return sinValues[Math.floor(angle * DEGREES * 10)]
+}
+const cos = (angle) => {
+    return cosValues[Math.floor(angle * DEGREES * 10)]
+}
 
 const COLORS = {
     'background': 'white',
@@ -557,7 +574,8 @@ class Planet {
     }
 
     calcPos() {
-        const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
+        // const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
+        const unitVector = [cos(this.angle), sin(this.angle)]
         const scaledVector = scale(unitVector, this.orbit.r)
         const orbitalPosition = add(scaledVector, this.orbit.pos)
         return orbitalPosition
