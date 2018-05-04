@@ -1,26 +1,16 @@
 /*
 
 TODO
-- increase 'gravity' of homeworld the farther away a boid is, modulated by some factor
-- add wandering behavior when boids are outside alignment/coherence range
-
-- some planets grow plants
-- you can collect plants
-- you can drop plants as offerings to aliens
-- if they like the plant they will pick it up and return to their homeworld
-- their homeworld will now have fuel crystals you can pick up to replenish your fuel supply
-- you've now "befriended" the aliens and they'll follow you more closely
 - if your fuel runs out, the game ends
-    - you get a map or something at the end, showing planets you visited and aliens you befriended
+- ui for fuel and gifts
 - actual graphics
-- performance optimizations
-- make avatar slower when clicking closer to it, maybe make camera follow instead of center
+- fix bug where some boids go flying off in a direction and keep going
 
 STRETCH
+- add wandering behavior when boids are outside alignment/coherence range
 - you can leave beacons to fast-travel back to that sector
-- you can land on a planet and get a randomized landscape
-    - some planet have interesting features, they'll be some indicator while in "space mode"
-    - homeworlds show the aliens/alien architecture
+- you get a map or something at the end, showing planets you visited and aliens you befriended
+- make avatar slower when clicking closer to it, maybe make camera follow instead of center
 
 */
 
@@ -45,6 +35,7 @@ const NEXT_PLANET_POWER = 1.5
 const MIN_PLANET_SPEED = PI / 36000
 const MAX_PLANET_SPEED = PI / 3600
 const ALIEN_RATE = 0.5
+const GIFT_RATE = 0.1
 const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
 
@@ -160,7 +151,8 @@ class Game {
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
 
         document.addEventListener('keydown', e => {
-            if (e.key === ' ') {
+            if (e.key === ' ' && this.galaxy.avatar.gifts > 0) {
+                this.galaxy.avatar.gifts--
                 this.galaxy.gifts.push(new Gift(this.galaxy.avatar.sector, this.galaxy.avatar.pos))
             }
         })
@@ -451,6 +443,13 @@ class Galaxy {
                             planet.hasFuel = false
                         })
                     }
+                    if (planet.hasGift) {
+                        this.avatar.checkAttractor(coords, planet.pos, planet.r, () => {
+                            console.log('pick up a gift')
+                            this.avatar.gifts++
+                            planet.hasGift = false
+                        })
+                    }
                 })
 
             }
@@ -571,6 +570,11 @@ class Planet {
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
 
+        this.ticks = 0
+        this.doesGrow = rng() <= GIFT_RATE
+        this.growthRate = FPS * 100
+        this.hasGift = this.doesGrow
+
         this.hasFuel = false
     }
 
@@ -588,6 +592,7 @@ class Planet {
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
+        if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green')
         if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, COLORS.debug, 'stroke')
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
     }
@@ -655,6 +660,7 @@ class Avatar extends Vehicle {
         super(sector, pos, 5, 0.9, SECTOR_SIZE / 2)
         this.r = 10
         this.target = pos
+        this.gifts = 0
     }
 
     update(canvas, galaxy) {
@@ -718,14 +724,14 @@ class Boid extends Vehicle {
 
         if (sepCount > 0) {
             sepSum = scale(sepSum, 1 / sepCount)
-            sepSum = setMag(sepSum, this.flock.maxSpeed)
-            sep = limit(sub(sepSum, this.vel), this.flock.maxForce)
+            sepSum = setMag(sepSum, this.maxSpeed)
+            sep = limit(sub(sepSum, this.vel), this.maxForce)
         }
 
         if (aliCount > 0) {
             aliSum = scale(aliSum, 1 / aliCount)
-            aliSum = setMag(aliSum, this.flock.maxSpeed)
-            ali = limit(sub(aliSum, this.vel), this.flock.maxForce)
+            aliSum = setMag(aliSum, this.maxSpeed)
+            ali = limit(sub(aliSum, this.vel), this.maxForce)
         }
 
         if (cohCount > 0) {
@@ -764,27 +770,28 @@ class Boid extends Vehicle {
         }
     }
 
-    homeworldAttractor() {
-        if (this.flock.hasGift) return this.flock.planetAttractor
+    handleHomeworld() {
         const planet = this.flock.planet
         const diff = sub(planet.pos, this.pos)
         const sqDist = square(diff)
         const maxDist = SECTOR_SIZE * 2
         const baseForce = this.flock.planetAttractor.force
-        const distForce = (sqDist * sqDist) / Math.pow(maxDist, 4)
-        return new Attractor(planet.sector, planet.pos, Infinity, baseForce * distForce)
+        const distForce = Math.min(1, (sqDist * sqDist) / Math.pow(maxDist, 4))
+        return limit(setMag(diff, distForce), this.maxSpeed)
     }
 
     applyBehaviors(canvas, galaxy) {
         const {sep, ali, coh} = this.handleFlocking()
 
+        const homeworld = this.hasGift ? [0, 0] : this.handleHomeworld()
+
         this.handleGifts(galaxy)
 
         // handle attractors/obstacles
-        const planetAttractor = this.homeworldAttractor()
         const attractors = galaxy.obstacles
             .concat(this.flock.gifts)
-            .concat([ planetAttractor, this.flock.avatarAttractor ])
+            .concat([ this.flock.avatarAttractor ])
+            .concat(this.hasGift ? [this.flock.planetAttractor] : [])
         const attract = this.applyAttractors(attractors, canvas)
 
         // apply final forces
@@ -792,6 +799,7 @@ class Boid extends Vehicle {
         this.applyForce(ali)
         this.applyForce(coh)
         this.applyForce(attract)
+        this.applyForce(homeworld)
     }
 
     update(canvas, galaxy) {
