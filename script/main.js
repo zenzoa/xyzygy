@@ -1,13 +1,11 @@
 /*
 
 TODO
-- use universal timer to figure out planet angles and gift growth
 - if your fuel runs out, the game ends
 - ui for fuel and gifts
 - actual graphics
 
 - fix bug where some boids go flying off in a direction and keep going
-- fix movement bug? maybe just my computer?
 
 STRETCH
 - add wandering behavior when boids are outside alignment/coherence range
@@ -39,8 +37,8 @@ const MIN_PLANET_SPEED = PI / 36000
 const MAX_PLANET_SPEED = PI / 3600
 const ALIEN_RATE = 0.5
 const GIFT_RATE = 0.1
-const MIN_GIFT_REGEN = FPS * 10
-const MAX_GIFT_REGEN = FPS * 60
+const MIN_GIFT_REGEN = FPS * 60
+const MAX_GIFT_REGEN = FPS * 600
 const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
 
@@ -116,6 +114,10 @@ const absPosition = (sector, pos) => {
 
 const stringifyCoords = (coords) => {
     return `${coords[0]}, ${coords[1]}`
+}
+
+const stringifyPlanetCoords = (coords, planetIndex) => {
+    return `${coords[0]}, ${coords[1]}, ${planetIndex}`
 }
 
 class Game {
@@ -339,6 +341,8 @@ class Galaxy {
         this.maxCache = 100
         this.range = 2
 
+        this.planetCache = {}
+
         this.flockCache = {}
         this.flockCacheKeys = []
         this.maxFlockCache = 10
@@ -348,6 +352,8 @@ class Galaxy {
 
         this.gifts = []
         this.friends = {}
+
+        this.ticks = 0
     }
 
     getSector(coords, sectorsInRange) {
@@ -367,7 +373,7 @@ class Galaxy {
     }
 
     cacheSector(coords, key, sectorsInRange) {
-        const sector = new Sector(coords)
+        const sector = new Sector(this, coords)
         this.sectorCache[key] = sector
         this.sectorCacheKeys.push(key)
         if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
@@ -415,7 +421,8 @@ class Galaxy {
         this.flockCacheKeys = this.flockCacheKeys.filter(key => !keysToRemove.includes(key))
     }
 
-    update(canvas) {
+    update(canvas, galaxy) {
+        this.ticks++
 
         const sectorsInRange = this.sectorsInRange(canvas.currentSector)
 
@@ -444,15 +451,15 @@ class Galaxy {
                     // check to see if avatar is touching a planet with fuel
                     if (planet.hasFuel) {
                         this.avatar.checkAttractor(coords, planet.pos, planet.r, () => {
-                            planet.hasFuel = false
+                            this.avatar.pickUpFuel()
+                            planet.pickUpFuel(this)
                         })
                     }
+                    // check to see if avatar is touching a planet with a gift
                     if (planet.hasGift) {
                         this.avatar.checkAttractor(coords, planet.pos, planet.r, () => {
-                            console.log('pick up gift', planet.giftRegenRate)
-                            this.avatar.gifts++
-                            planet.hasGift = false
-                            planet.giftRegenTicks = 0
+                            this.avatar.pickUpGift()
+                            planet.pickUpGift(this)
                         })
                     }
                 })
@@ -476,7 +483,7 @@ class Galaxy {
 
 class Sector {
 
-    constructor(coords) {
+    constructor(galaxy, coords) {
         this.coords = coords
 
         // create a random seed based on the sector's coordinates -
@@ -495,7 +502,7 @@ class Sector {
 
         // some sectors have star systems
         const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
-        if (hasStar) this.star = new Star(this.coords, this.rng)
+        if (hasStar) this.star = new Star(galaxy, this.coords, this.rng)
 
         // some sectors have aliens
         if (hasStar && this.star.planets.length > 0) {
@@ -523,7 +530,7 @@ class Sector {
 
 class Star {
 
-    constructor(sector, rng) {
+    constructor(galaxy, sector, rng) {
         this.sector = sector
 
         this.pos = randVector(rng, SECTOR_SIZE)
@@ -539,7 +546,7 @@ class Star {
             lastPlanetRadius = planetRadius
             const separation = lastPlanetRadius + planetRadius
             orbitRadius += randInt(rng, separation, separation * Math.pow(i + 1, NEXT_PLANET_POWER))
-            if (orbitRadius <= MAX_ORBIT_RADIUS) this.planets.push(new Planet(this, orbitRadius, planetRadius, rng))
+            if (orbitRadius <= MAX_ORBIT_RADIUS) this.planets.push(new Planet(galaxy, this, i, orbitRadius, planetRadius, rng))
         }
     }
 
@@ -565,7 +572,8 @@ class Orbit {
 
 class Planet {
 
-    constructor(star, orbitRadius, r, rng) {
+    constructor(galaxy, star, index, orbitRadius, r, rng) {
+        this.index = index
         this.sector = star.sector
 
         this.orbit = new Orbit(this.sector, star.pos, orbitRadius)
@@ -575,33 +583,62 @@ class Planet {
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
 
-        this.giftRegenTicks = 0
         this.growsGifts = rng() <= GIFT_RATE
         this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
-        this.hasGift = this.growsGifts
 
-        this.hasFuel = false
+        this.hasFuel = this.getCache(galaxy, 'hasFuel') || false
+        this.hasGift = this.getCache(galaxy, 'hasGift') || this.growsGifts
+        this.lastGiftPickup = this.getCache(galaxy, 'lastGiftPickup') || 0
+    }
+
+    getCache(galaxy, key) {
+        const planetKey = stringifyPlanetCoords(this.sector, this.index)
+        if (!galaxy.planetCache[planetKey]) return undefined
+        else galaxy.planetCache[planetKey][key]
+    }
+
+    setCache(galaxy, key, value) {
+        const planetKey = stringifyPlanetCoords(this.sector, this.index)
+        if (!galaxy.planetCache[planetKey]) galaxy.planetCache[planetKey] = {}
+        galaxy.planetCache[planetKey][key] = value
+        this[key] = value
+    }
+
+    generateFuel(galaxy) {
+        this.setCache(galaxy, 'hasFuel', true)
+    }
+
+    generateGift(galaxy) {
+        this.setCache(galaxy, 'hasGift', true)
+    }
+
+    pickUpFuel(galaxy) {
+        this.setCache(galaxy, 'hasFuel', false)
+    }
+
+    pickUpGift(galaxy) {
+        this.setCache(galaxy, 'hasGift', false)
+        this.setCache(galaxy, 'lastGiftPickup', galaxy.ticks)
     }
 
     calcPos() {
-        // const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
         const unitVector = [cos(this.angle), sin(this.angle)]
         const scaledVector = scale(unitVector, this.orbit.r)
         const orbitalPosition = add(scaledVector, this.orbit.pos)
         return orbitalPosition
     }
 
-    update(canvas) {
+    update(canvas, galaxy) {
         // move the planet along its orbital path
-        this.angle += this.speed
-        if (this.angle > PI * 2) this.angle -= PI * 2
+        const ticksPerRotation = (PI * 2) /  this.speed
+        const remainderTicks = galaxy.ticks % ticksPerRotation
+        const rotationPortion = remainderTicks / ticksPerRotation
+        this.angle = rotationPortion * PI * 2
         this.pos = this.calcPos()
 
         // regrow gifts
-        this.giftRegenTicks++
-        if (this.growsGifts && this.giftRegenTicks > this.giftRegenRate) {
-            this.giftRegenTicks = 0
-            this.hasGift = true
+        if (this.growsGifts && galaxy.ticks > this.lastGiftPickup + this.giftRegenRate) {
+            this.generateGift(galaxy)
         }
 
         // draw planets
@@ -675,6 +712,15 @@ class Avatar extends Vehicle {
         this.r = 10
         this.target = pos
         this.gifts = 0
+        this.fuel = 0
+    }
+
+    pickUpGift() {
+        this.gifts++
+    }
+
+    pickUpFuel() {
+        this.fuel++
     }
 
     update(canvas, galaxy) {
@@ -881,9 +927,9 @@ class Flock {
 
     deliverGift(galaxy) {
         this.hasGift = false
-        this.planet.hasFuel = true
         this.makeFriend()
         galaxy.friends[stringifyCoords(this.sector)] = true
+        this.planet.generateFuel(galaxy)
     }
 
     makeFriend() {
