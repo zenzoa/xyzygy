@@ -1,10 +1,13 @@
 /*
 
 TODO
+- use universal timer to figure out planet angles and gift growth
 - if your fuel runs out, the game ends
 - ui for fuel and gifts
 - actual graphics
+
 - fix bug where some boids go flying off in a direction and keep going
+- fix movement bug? maybe just my computer?
 
 STRETCH
 - add wandering behavior when boids are outside alignment/coherence range
@@ -36,6 +39,8 @@ const MIN_PLANET_SPEED = PI / 36000
 const MAX_PLANET_SPEED = PI / 3600
 const ALIEN_RATE = 0.5
 const GIFT_RATE = 0.1
+const MIN_GIFT_REGEN = FPS * 10
+const MAX_GIFT_REGEN = FPS * 60
 const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
 
@@ -140,11 +145,11 @@ class Game {
         this.mousePos = [0, 0]
 
         el.addEventListener('mousedown', e => this.startMoving(e))
-        el.addEventListener('mousemove', e => this.changeDirection(e))
+        document.addEventListener('mousemove', e => this.changeDirection(e))
         document.addEventListener('mouseup', e => this.stopMoving(e))
 
         el.addEventListener('touchstart', e => this.startMoving(e.touches[0]))
-        el.addEventListener('touchmove', e => this.changeDirection(e.touches[0]))
+        document.addEventListener('touchmove', e => this.changeDirection(e.touches[0]))
         document.addEventListener('touchend', e => this.stopMoving(e.touches[0]))
 
         el.addEventListener('contextmenu', e => e.preventDefault())
@@ -439,15 +444,15 @@ class Galaxy {
                     // check to see if avatar is touching a planet with fuel
                     if (planet.hasFuel) {
                         this.avatar.checkAttractor(coords, planet.pos, planet.r, () => {
-                            console.log('gain some fuel')
                             planet.hasFuel = false
                         })
                     }
                     if (planet.hasGift) {
                         this.avatar.checkAttractor(coords, planet.pos, planet.r, () => {
-                            console.log('pick up a gift')
+                            console.log('pick up gift', planet.giftRegenRate)
                             this.avatar.gifts++
                             planet.hasGift = false
+                            planet.giftRegenTicks = 0
                         })
                     }
                 })
@@ -570,10 +575,10 @@ class Planet {
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
 
-        this.ticks = 0
-        this.doesGrow = rng() <= GIFT_RATE
-        this.growthRate = FPS * 100
-        this.hasGift = this.doesGrow
+        this.giftRegenTicks = 0
+        this.growsGifts = rng() <= GIFT_RATE
+        this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
+        this.hasGift = this.growsGifts
 
         this.hasFuel = false
     }
@@ -592,6 +597,15 @@ class Planet {
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
+        // regrow gifts
+        this.giftRegenTicks++
+        if (this.growsGifts && this.giftRegenTicks > this.giftRegenRate) {
+            this.giftRegenTicks = 0
+            this.hasGift = true
+        }
+
+        // draw planets
+        if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green', 'stroke')
         if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green')
         if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, COLORS.debug, 'stroke')
         canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
