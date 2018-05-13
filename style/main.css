@@ -12,14 +12,35 @@ body {
     background: #444;
 }
 
+.frame {
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    border: 5px solid hotpink;
+    border-radius: 100%;
+    overflow: hidden;
+}
+
+.frame:before {
+    content: '';
+    display: block;
+    padding-top: 100%;
+}
+
+.screen {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
+}
+
 canvas {
     display: block;
     touch-action: none;
     user-select: none;
-}
-
-.frame {
-    border: 5px solid hotpink;
-    border-radius: 100%;
-    overflow: hidden;
+    width: 100%;
+    height: 100%;
 }

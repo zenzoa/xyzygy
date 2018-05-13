@@ -4,6 +4,7 @@ TODO
 - if your fuel runs out, the game ends
 - ui for fuel and gifts
 - actual graphics
+- parallax bg
 
 - fix bug where some boids go flying off in a direction and keep going
 
@@ -41,6 +42,7 @@ const MIN_GIFT_REGEN = FPS * 60
 const MAX_GIFT_REGEN = FPS * 600
 const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
+const FUEL_RATE = 1 / (FPS * 60 * 1)
 
 // sin/cos lookup tables
 let sinValues = []
@@ -215,6 +217,7 @@ class Game {
             this.canvas.context.font = '12px sans-serif'
             this.canvas.context.fillStyle = COLORS.debug
             this.canvas.context.fillText(`${this.currentSector[0]}, ${this.currentSector[1]}`, SCREEN_SIZE / 2, 22)
+            this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
         }
     }
 
@@ -712,7 +715,7 @@ class Avatar extends Vehicle {
         this.r = 10
         this.target = pos
         this.gifts = 0
-        this.fuel = 0
+        this.fuel =  1
     }
 
     pickUpGift() {
@@ -724,8 +727,10 @@ class Avatar extends Vehicle {
     }
 
     update(canvas, galaxy) {
+        this.fuel -= FUEL_RATE
+
         const seekMouse = this.seek(galaxy.currentSector, this.target)
-        this.applyForce(seekMouse)
+        if (this.fuel > 0) this.applyForce(seekMouse)
 
         const attract = this.applyAttractors(galaxy.obstacles.slice(1), canvas)
         this.applyForce(attract)
@@ -733,7 +738,7 @@ class Avatar extends Vehicle {
         this.updatePos()
 
         if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.avatar)
+        canvas.drawCircle(this.sector, this.pos, this.r, this.fuel <= 0 ? 'black' : COLORS.avatar)
     }
 
 }
