@@ -28,8 +28,8 @@ const PI = Math.PI
 const RADIANS = (PI * 2) / 360
 const DEGREES = 360 / (PI * 2)
 const FPS = 60
-const SCREEN_SIZE = 600
-const SECTOR_SIZE = 600
+const SCREEN_SIZE = 800
+const SECTOR_SIZE = 800
 const SYSTEM_RATE = 0.33
 const MIN_BACKGROUND_STARS = 10
 const MAX_BACKGROUND_STARS = 20
@@ -72,7 +72,7 @@ const COLORS = {
     'planet': 'black',
     'orbit': '#eee',
     'boid': 'plum',
-    'debug': 'pink'
+    'debug': 'white'
 }
 
 const randFloat = (rng, min, max) => rng() * (max - min) + min
@@ -284,45 +284,45 @@ class Canvas {
         return offsetPos
     }
 
-    setColor(color) {
-        this.context.strokeStyle = color
-        this.context.fillStyle = color
-    }
-
-    drawCircle(sector, pos, size, color, style = 'fill', width = 1) {
+    drawShape(sector, pos, drawFn, settings) {
         pos = this.getOffset(sector, pos)
-        this.setColor(color)
-        this.context.lineWidth = width
-
+        this.context.save()
+        this.context.translate(pos[0], pos[1])
         this.context.beginPath()
-        this.context.arc(pos[0], pos[1], size, 0, PI * 2)
 
-        if (style === 'stroke') this.context.stroke()
-        else this.context.fill()
+        drawFn(this.context)
+
+        this.context.restore()
+
+        if (settings.fill) {
+            this.context.fillStyle = settings.fill
+            this.context.fill()
+        }
+
+        if (settings.stroke) {
+            this.context.lineWidth = settings.width || 1
+            this.context.strokeStyle = settings.stroke
+            this.context.stroke()
+        }
     }
 
-    drawRect(sector, pos, size, color, style = 'fill') {
-        pos = this.getOffset(sector, pos)
-        this.setColor(color)
-
-        this.context.beginPath()
-        this.context.rect(pos[0], pos[1], size, size)
-
-        if (style === 'stroke') this.context.stroke()
-        else this.context.fill()
+    drawCircle(sector, pos, r, settings) {
+        const draw = context => context.arc(0, 0, r, 0, PI * 2)
+        this.drawShape(sector, pos, draw, settings)
     }
 
-    drawLine(sector, start, end, color) {
-        start = this.getOffset(sector, start)
-        end = this.getOffset(sector, end)
-
-        this.setColor(color)
-
-        this.context.beginPath()
-        this.context.moveTo(start[0], start[1])
-        this.context.lineTo(end[0], end[1])
-        this.context.stroke()
+    drawRect(sector, pos, width, height, settings) {
+        const draw = context => context.rect(0, 0, width, height)
+        this.drawShape(sector, pos, draw, settings)
     }
+
+    // drawLine(sector, start, end, color) {
+    //     const draw = context => {
+    //         context.moveTo(start[0], start[1])
+    //         context.lineTo(end[0], end[1])
+    //     }
+    //     this.drawShape(sector, [0, 0], draw, settings)
+    // }
 
     clear() {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
@@ -539,7 +539,7 @@ class Sector {
 
     update(canvas) {
         // this.drawBackgroundStars(canvas)
-        if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke')
+        if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, SECTOR_SIZE, { stroke: COLORS.debug })
     }
 
 }
@@ -567,7 +567,7 @@ class Star {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, 'black')
+        canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'black' })
     }
 
 }
@@ -581,7 +581,7 @@ class Orbit {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, 'black', 'stroke', 0.1)
+        canvas.drawCircle(this.sector, this.pos, this.r, { stroke: 'black', width: 0.1 })
     }
 
 }
@@ -651,6 +651,7 @@ class Planet {
         const remainderTicks = galaxy.ticks % ticksPerRotation
         const rotationPortion = remainderTicks / ticksPerRotation
         this.angle = this.startAngle + (rotationPortion * PI * 2)
+        if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
 
         // regrow gifts
@@ -659,11 +660,10 @@ class Planet {
         }
 
         // draw planets
-        if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green', 'stroke')
-        if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green')
-        if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, 'white')
-        canvas.drawCircle(this.sector, this.pos, this.r, 'black', 'stroke', 2)
+        if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'green' })
+        if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, { fill: 'green' })
+        if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: COLORS.debug })
+        canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'white', stroke: 'black', width: 2 })
     }
 
 }
@@ -752,8 +752,8 @@ class Avatar extends Vehicle {
 
         this.updatePos()
 
-        if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, this.fuel <= 0 ? 'black' : 'hotpink')
+        if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, { stroke: COLORS.debug })
+        canvas.drawCircle(this.sector, this.pos, this.r, { fill: (this.fuel <= 0 ? 'black' : 'hotpink') })
     }
 
 }
@@ -762,10 +762,12 @@ class Boid extends Vehicle {
 
     constructor(index, flock, sector, pos) {
         super(sector, pos, flock.maxSpeed, flock.maxForce, flock.seekDist)
-        this.r = 5
+        this.r = 15
         this.index = index
         this.flock = flock
         this.hasGift = false
+        this.bezPoint1 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
+        this.bezPoint2 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
     }
 
     handleFlocking() {
@@ -885,8 +887,33 @@ class Boid extends Vehicle {
     update(canvas, galaxy) {
         this.applyBehaviors(canvas, galaxy)
         this.updatePos()
-        if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.r + 2, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.boid)
+
+        if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.r + 2, { stroke: COLORS.debug })
+        if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.r, { stroke: COLORS.debug })
+
+        let angle = Math.atan2(this.vel[0], this.vel[1]) + (PI / 2)
+        if (angle > PI * 2) angle -= PI * 2
+        const scale = this.r * 2
+
+        const draw = context => {
+            context.rotate(angle)
+            context.scale(scale, scale)
+            context.translate(-0.5, 0)
+
+            context.moveTo(0, 0)
+            context.bezierCurveTo(
+                this.bezPoint1[0], -this.bezPoint1[1],
+                this.bezPoint2[0], -this.bezPoint2[1],
+                1, 0)
+            context.bezierCurveTo(
+                this.bezPoint2[0], this.bezPoint2[1],
+                this.bezPoint1[0], this.bezPoint1[1],
+                0, 0)
+        }
+
+        const settings = { fill: 'white', stroke: 'black', width: 1 }
+
+        canvas.drawShape(this.sector, this.pos, draw, settings)
     }
 
 }
@@ -1006,7 +1033,7 @@ class Gift {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.debug)
+        canvas.drawCircle(this.sector, this.pos, this.r, { fill: COLORS.debug })
     }
 
 }
