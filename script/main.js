@@ -1,18 +1,24 @@
 /*
 
 TODO
-- if your fuel runs out, the game ends
-- ui for fuel and gifts
 - actual graphics
-- parallax bg
-
-- fix bug where some boids go flying off in a direction and keep going
+    - animate stars
+    - wiggly lines on planets
+    - variety of shapes for aliens
+    - show gifts
+    - show fuel
+- actual ui
+    - fuel indicator
+    - list of gifts / give gift button
 
 STRETCH
+- actual end-screen
+- parallax bg
 - add wandering behavior when boids are outside alignment/coherence range
 - you can leave beacons to fast-travel back to that sector
 - you get a map or something at the end, showing planets you visited and aliens you befriended
 - make avatar slower when clicking closer to it, maybe make camera follow instead of center
+- optimize flocking
 
 */
 
@@ -125,6 +131,8 @@ const stringifyPlanetCoords = (coords, planetIndex) => {
 class Game {
 
     constructor(canvas, avatar) {
+        this.screen = document.getElementById('screen')
+        this.frame = document.getElementById('frame')
 
         // setup canvas
         const el = document.getElementById('canvas')
@@ -178,8 +186,12 @@ class Game {
 
     changeDirection(e) {
         if (this.mouseDown) {
-            const x = (e.clientX - this.canvas.el.offsetLeft) / ZOOM
-            const y = (e.clientY - this.canvas.el.offsetTop) / ZOOM
+            const offsetX = this.frame.offsetLeft + this.screen.offsetLeft
+            const offsetY = this.frame.offsetTop + this.screen.offsetTop
+            const zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
+            const zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
+            const x = (e.clientX - offsetX) * zoomX
+            const y = (e.clientY - offsetY) * zoomY
             this.mousePos = [x, y]
         }
     }
@@ -277,9 +289,10 @@ class Canvas {
         this.context.fillStyle = color
     }
 
-    drawCircle(sector, pos, size, color, style = 'fill') {
+    drawCircle(sector, pos, size, color, style = 'fill', width = 1) {
         pos = this.getOffset(sector, pos)
         this.setColor(color)
+        this.context.lineWidth = width
 
         this.context.beginPath()
         this.context.arc(pos[0], pos[1], size, 0, PI * 2)
@@ -320,7 +333,7 @@ class Canvas {
         this.currentSector = currentSector
 
         // draw background
-        this.context.fillStyle = COLORS.background
+        this.context.fillStyle = '#eee'
         this.context.fillRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
 
         this.context.save()
@@ -494,14 +507,14 @@ class Sector {
         // without having to keep track of it in memory
         this.rng = new Math.seedrandom(`coordinates: ${coords[0]}, ${coords[1]}`)
 
-        const numBackgroundStars = randInt(this.rng, MIN_BACKGROUND_STARS, MAX_BACKGROUND_STARS)
-        this.backgroundStars = []
-        for (var i = 0; i < numBackgroundStars; i++) {
-            const x = randInt(this.rng, 0, SECTOR_SIZE)
-            const y = randInt(this.rng, 0, SECTOR_SIZE)
-            const r = randInt(this.rng, MIN_STAR_RADIUS * 0.1, MAX_STAR_RADIUS * 0.1)
-            this.backgroundStars.push([x, y, r])
-        }
+        // const numBackgroundStars = randInt(this.rng, MIN_BACKGROUND_STARS, MAX_BACKGROUND_STARS)
+        // this.backgroundStars = []
+        // for (var i = 0; i < numBackgroundStars; i++) {
+        //     const x = randInt(this.rng, 0, SECTOR_SIZE)
+        //     const y = randInt(this.rng, 0, SECTOR_SIZE)
+        //     const r = randInt(this.rng, MIN_STAR_RADIUS * 0.1, MAX_STAR_RADIUS * 0.1)
+        //     this.backgroundStars.push([x, y, r])
+        // }
 
         // some sectors have star systems
         const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
@@ -518,14 +531,14 @@ class Sector {
         }
     }
 
-    drawBackgroundStars(canvas) {
-        this.backgroundStars.forEach(starCoords => {
-            canvas.drawCircle(this.coords, starCoords, starCoords[2], '#eee')
-        })
-    }
+    // drawBackgroundStars(canvas) {
+    //     this.backgroundStars.forEach(starCoords => {
+    //         canvas.drawCircle(this.coords, starCoords, starCoords[2], '#eee')
+    //     })
+    // }
 
     update(canvas) {
-        this.drawBackgroundStars(canvas)
+        // this.drawBackgroundStars(canvas)
         if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, COLORS.debug, 'stroke')
     }
 
@@ -554,7 +567,7 @@ class Star {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.star)
+        canvas.drawCircle(this.sector, this.pos, this.r, 'black')
     }
 
 }
@@ -568,7 +581,7 @@ class Orbit {
     }
 
     update(canvas) {
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.orbit, 'stroke')
+        canvas.drawCircle(this.sector, this.pos, this.r, 'black', 'stroke', 0.1)
     }
 
 }
@@ -582,7 +595,8 @@ class Planet {
         this.orbit = new Orbit(this.sector, star.pos, orbitRadius)
 
         this.r = r
-        this.angle = randFloat(rng, 0, PI * 2)
+        this.startAngle = randFloat(rng, 0, PI * 2)
+        this.angle = this.startAngle
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
         this.pos = this.calcPos()
 
@@ -636,7 +650,7 @@ class Planet {
         const ticksPerRotation = (PI * 2) /  this.speed
         const remainderTicks = galaxy.ticks % ticksPerRotation
         const rotationPortion = remainderTicks / ticksPerRotation
-        this.angle = rotationPortion * PI * 2
+        this.angle = this.startAngle + (rotationPortion * PI * 2)
         this.pos = this.calcPos()
 
         // regrow gifts
@@ -648,7 +662,8 @@ class Planet {
         if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green', 'stroke')
         if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, 'green')
         if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, COLORS.planet)
+        canvas.drawCircle(this.sector, this.pos, this.r, 'white')
+        canvas.drawCircle(this.sector, this.pos, this.r, 'black', 'stroke', 2)
     }
 
 }
@@ -727,9 +742,9 @@ class Avatar extends Vehicle {
     }
 
     update(canvas, galaxy) {
-        this.fuel -= FUEL_RATE
-
         const seekMouse = this.seek(galaxy.currentSector, this.target)
+        const isMoving = seekMouse[0] > 0 || seekMouse[1] > 0
+        if (isMoving) this.fuel -= FUEL_RATE
         if (this.fuel > 0) this.applyForce(seekMouse)
 
         const attract = this.applyAttractors(galaxy.obstacles.slice(1), canvas)
@@ -738,7 +753,7 @@ class Avatar extends Vehicle {
         this.updatePos()
 
         if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, COLORS.debug, 'stroke')
-        canvas.drawCircle(this.sector, this.pos, this.r, this.fuel <= 0 ? 'black' : COLORS.avatar)
+        canvas.drawCircle(this.sector, this.pos, this.r, this.fuel <= 0 ? 'black' : 'hotpink')
     }
 
 }

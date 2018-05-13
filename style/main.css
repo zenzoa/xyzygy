@@ -1,3 +1,7 @@
+* {
+    box-sizing: border-box;
+}
+
 html, body {
     margin: 0;
     padding: 0;
@@ -12,22 +16,22 @@ body {
     background: #444;
 }
 
-.frame {
+#frame {
     position: relative;
     width: 100%;
     max-width: 600px;
-    border: 5px solid hotpink;
+    border: 10px solid #222;
     border-radius: 100%;
     overflow: hidden;
 }
 
-.frame:before {
+#frame:before {
     content: '';
     display: block;
     padding-top: 100%;
 }
 
-.screen {
+#screen {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -37,7 +41,7 @@ body {
     height: 100%;
 }
 
-canvas {
+#canvas {
     display: block;
     touch-action: none;
     user-select: none;
