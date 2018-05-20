@@ -50,21 +50,6 @@ const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
 const FUEL_RATE = 1 / (FPS * 60 * 1)
 
-// sin/cos lookup tables
-let sinValues = []
-let cosValues = []
-for (var i = 0; i < 3600; i++) {
-    const angle = (i / 10) * RADIANS
-    sinValues[i] = Math.sin(angle)
-    cosValues[i] = Math.cos(angle)
-}
-const sin = (angle) => {
-    return sinValues[Math.floor(angle * DEGREES * 10)]
-}
-const cos = (angle) => {
-    return cosValues[Math.floor(angle * DEGREES * 10)]
-}
-
 const COLORS = {
     'background': 'white',
     'avatar': 'hotpink',
@@ -316,13 +301,15 @@ class Canvas {
         this.drawShape(sector, pos, draw, settings)
     }
 
-    // drawLine(sector, start, end, color) {
-    //     const draw = context => {
-    //         context.moveTo(start[0], start[1])
-    //         context.lineTo(end[0], end[1])
-    //     }
-    //     this.drawShape(sector, [0, 0], draw, settings)
-    // }
+    drawLine(sector, pos, endSector, endPos, settings) {
+        const draw = context => {
+            context.moveTo(0, 0)
+            const relSector = sub(sector, endSector)
+            const relEndPos = absPosition(relSector, endPos)
+            context.lineTo(relEndPos[0], relEndPos[1])
+        }
+        this.drawShape(sector, pos, draw, settings)
+    }
 
     clear() {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
@@ -355,7 +342,7 @@ class Galaxy {
         this.sectorCache = {}
         this.sectorCacheKeys = []
         this.maxCache = 100
-        this.range = 2
+        this.range = 1
 
         this.planetCache = {}
 
@@ -442,7 +429,7 @@ class Galaxy {
 
         const sectorsInRange = this.sectorsInRange(canvas.currentSector)
 
-        this.obstacles = [new Attractor(this.avatar.sector, this.avatar.pos, this.avatar.r, -2.0)]
+        this.obstacles = [new Attractor(this.avatar.sector, this.avatar.pos, -2.0, this.avatar.r)]
 
         let stars = []
         let planets = []
@@ -456,13 +443,13 @@ class Galaxy {
             if (sector.star) {
                 stars.push(sector.star)
 
-                this.obstacles.push(new Attractor(coords, sector.star.pos, sector.star.r, -2.0))
+                this.obstacles.push(new Attractor(coords, sector.star.pos, -2.0, sector.star.r))
 
                 sector.star.planets.forEach(planet => {
                     planets.push(planet)
                     orbits.push(planet.orbit)
 
-                    this.obstacles.push(new Attractor(coords, planet.pos, planet.r, -2.0))
+                    this.obstacles.push(new Attractor(coords, planet.pos, -2.0, planet.r))
 
                     // check to see if avatar is touching a planet with fuel
                     if (planet.hasFuel) {
@@ -566,7 +553,25 @@ class Star {
         }
     }
 
-    update(canvas) {
+    drawRays(canvas, galaxy) {
+        const numRays = this.r * 2
+        const rayAngle = (PI * 2) / numRays
+        const rayLength = this.r * 0.2
+        const rayTime = 200
+        const settings = { stroke: 'black', width: 1 }
+        const timeMod = Math.sin((galaxy.ticks % rayTime) / rayTime * PI * 2)
+        for (var i = 0; i < numRays; i++) {
+            const angle = i * rayAngle
+            const baseLength = this.r + rayLength
+            const length = baseLength + (Math.sin(angle * numRays / 6) * rayLength * timeMod)
+            const x = Math.cos(angle) * length
+            const y = Math.sin(angle) * length
+            canvas.drawLine(this.sector, this.pos, this.sector, [x, y], settings)
+        }
+    }
+
+    update(canvas, galaxy) {
+        this.drawRays(canvas, galaxy)
         canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'black' })
     }
 
@@ -639,7 +644,7 @@ class Planet {
     }
 
     calcPos() {
-        const unitVector = [cos(this.angle), sin(this.angle)]
+        const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
         const scaledVector = scale(unitVector, this.orbit.r)
         const orbitalPosition = add(scaledVector, this.orbit.pos)
         return orbitalPosition
@@ -747,7 +752,7 @@ class Avatar extends Vehicle {
         if (isMoving) this.fuel -= FUEL_RATE
         if (this.fuel > 0) this.applyForce(seekMouse)
 
-        const attract = this.applyAttractors(galaxy.obstacles.slice(1), canvas)
+        const attract = Attractor.applyAll(galaxy.obstacles.slice(1), this)
         this.applyForce(attract)
 
         this.updatePos()
@@ -758,6 +763,82 @@ class Avatar extends Vehicle {
 
 }
 
+// class Boid {
+
+//     constructor(index, flock, sector, pos, rng) {
+//         this.index = index
+//         this.flock = flock
+//         this.sector = sector
+//         this.pos = pos
+//         this.angle = randFloat(Math.random, 0, PI * 2)
+//         this.r = 15
+//         this.hasGift = false
+//     }
+
+//     update(canvas, galaxy) {
+//         const planet = this.flock.planet
+//         const maxDist = Math.pow(SECTOR_SIZE * 2, 4)
+//         const attractors = galaxy.obstacles
+//             .concat([ new Attractor(planet.sector, planet.pos, 1, null, null, (sqDist) => {
+//                 return Math.min(1, (sqDist * sqDist) / maxDist)
+//             }) ])
+//             // .concat(this.flock.gifts)
+//             // .concat([ this.flock.avatarAttractor ])
+//             // .concat(this.hasGift ? [this.flock.planetAttractor] : [])
+//         const goal = Attractor.applyAll(attractors, this)
+
+//         const angleToGoal = Math.atan2(goal[1], goal[0])
+//         const angleChange = angleToGoal - this.angle
+//         const angleSpeed = this.flock.angleSpeed
+//         if (Math.abs(angleChange) > angleSpeed) {
+//             if (this.angle > angleToGoal) this.angle -= angleSpeed
+//             if (this.angle < angleToGoal) this.angle += angleSpeed
+//         }
+
+//         // let angleChange = angleToGoal - this.angle
+//         // if (angleChange < -this.flock.angleSpeed) angleChange = -this.flock.angleSpeed
+//         // if (angleChange > this.flock.angleSpeed) angleChange = this.flock.angleSpeed
+//         // this.angle += angleChange
+//         if (this.angle > PI * 2) this.angle -= PI * 2
+//         else if (this.angle < 0) this.angle += PI * 2
+
+//         const newDirection = [Math.cos(this.angle), Math.sin(this.angle)]
+//         const posChange = scale(newDirection, this.flock.maxSpeed)
+//         this.pos = add(this.pos, posChange)
+
+//         this.draw(canvas)
+//     }
+
+//     draw(canvas) {
+//         if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.r + 2, { stroke: COLORS.debug })
+//         if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.r, { stroke: COLORS.debug })
+
+//         const bezPoint1 = this.flock.bezPoint1
+//         const bezPoint2 = this.flock.bezPoint2
+//         const scale = this.r * 2
+
+//         const drawing = context => {
+//             context.rotate(this.angle)
+//             context.scale(scale, scale)
+//             context.translate(-0.5, 0)
+//             context.moveTo(0, 0)
+//             context.bezierCurveTo(
+//                 bezPoint1[0], -bezPoint1[1],
+//                 bezPoint2[0], -bezPoint2[1],
+//                 1, 0)
+//             context.bezierCurveTo(
+//                 bezPoint2[0], bezPoint2[1],
+//                 bezPoint1[0], bezPoint1[1],
+//                 0, 0)
+//         }
+
+//         const settings = { fill: 'white', stroke: 'black', width: 1 }
+
+//         canvas.drawShape(this.sector, this.pos, drawing, settings)
+//     }
+
+// }
+
 class Boid extends Vehicle {
 
     constructor(index, flock, sector, pos) {
@@ -766,8 +847,6 @@ class Boid extends Vehicle {
         this.index = index
         this.flock = flock
         this.hasGift = false
-        this.bezPoint1 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
-        this.bezPoint2 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
     }
 
     handleFlocking() {
@@ -874,7 +953,7 @@ class Boid extends Vehicle {
             .concat(this.flock.gifts)
             .concat([ this.flock.avatarAttractor ])
             .concat(this.hasGift ? [this.flock.planetAttractor] : [])
-        const attract = this.applyAttractors(attractors, canvas)
+        const attract = Attractor.applyAll(attractors, this) //this.applyAttractors(attractors, canvas)
 
         // apply final forces
         this.applyForce(sep)
@@ -902,12 +981,12 @@ class Boid extends Vehicle {
 
             context.moveTo(0, 0)
             context.bezierCurveTo(
-                this.bezPoint1[0], -this.bezPoint1[1],
-                this.bezPoint2[0], -this.bezPoint2[1],
+                this.flock.bezPoint1[0], -this.flock.bezPoint1[1],
+                this.flock.bezPoint2[0], -this.flock.bezPoint2[1],
                 1, 0)
             context.bezierCurveTo(
-                this.bezPoint2[0], this.bezPoint2[1],
-                this.bezPoint1[0], this.bezPoint1[1],
+                this.flock.bezPoint2[0], this.flock.bezPoint2[1],
+                this.flock.bezPoint1[0], this.flock.bezPoint1[1],
                 0, 0)
         }
 
@@ -925,6 +1004,7 @@ class Flock {
         this.planet = planet
 
         this.maxSpeed = randFloat(rng, 0.1, 5)
+        this.angleSpeed = randFloat(rng, 0.05, 0.5)
         this.maxForce = 0.1
 
         this.sepDist = 5
@@ -936,28 +1016,30 @@ class Flock {
         this.cohForce = randFloat(rng, 0.1, 1.0)
         this.sepForce = 2.0
 
-        this.planetDist = Infinity
         this.planetForce = randFloat(rng, 0.01, 0.1)
-        this.planetAttractor = new Attractor(this.sector, [0, 0], this.planetDist, this.planetForce)
+        this.planetAttractor = new Attractor(this.sector, [0, 0], this.planetForce)
 
-        this.avatarDist = 100 //randInt(rng, 100, SECTOR_SIZE)
+        this.avatarDist = 100
         this.avatarForce = randFloat(rng, 0.01, 0.1)
         if (rng() <= AVOID_AVATAR) this.avatarForce = this.avatarForce * -1
-        this.avatarAttractor = new Attractor([0, 0], [0, 0], this.avatarDist, this.avatarForce)
+        this.avatarAttractor = new Attractor([0, 0], [0, 0], this.avatarForce, this.avatarDist)
 
         this.giftDist = 100
         this.giftForce = randFloat(rng, 0.1, 0.5)
         this.hasGift = false
         this.isFriend = false
 
+        this.attractors = [ this.planetAttractor, this.avatarAttractor ]
+        this.gifts = []
+
+        this.bezPoint1 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
+        this.bezPoint2 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
+
         const numBoids = randInt(rng, 1, 20)
         this.boids = []
         for(var i = 0; i < numBoids; i++) {
             this.boids.push(new Boid(i, this, sector, randVector(Math.random, SECTOR_SIZE)))
         }
-
-        this.attractors = [ this.planetAttractor, this.avatarAttractor ]
-        this.gifts = []
     }
 
     center() {
@@ -1003,7 +1085,7 @@ class Flock {
             this.avatarAttractor.force = this.avatarForce
         }
 
-        this.gifts = galaxy.gifts.map(gift => (new Attractor(gift.sector, gift.pos, this.giftDist, this.giftForce)))
+        this.gifts = galaxy.gifts.map(gift => (new Attractor(gift.sector, gift.pos, this.giftForce, this.giftDist)))
     }
 
     update(canvas, galaxy) {
@@ -1015,11 +1097,41 @@ class Flock {
 
 class Attractor {
 
-    constructor(sector, pos, r, force) {
+    constructor(sector, pos, force, maxDist, minDist, scaleFn) {
         this.sector = sector
         this.pos = pos
-        this.r = r
+        this.absPos = absPosition(this.sector, this.pos)
         this.force = force
+        this.maxDist = maxDist
+        this.minDist = minDist
+        this.scaleFn = scaleFn
+    }
+
+    apply(obj) {
+        const absPos = absPosition(obj.sector, obj.pos)
+        const absGoal = absPosition(this.sector, this.pos)
+        const towardGoal = sub(absGoal, absPos)
+        const distFromGoal = square(towardGoal)
+        
+        if (this.maxDist && distFromGoal > Math.pow(this.maxDist + obj.r, 2)) return [0, 0]
+        if (this.minDist && distFromGoal < Math.pow(this.minDist + obj.r, 2)) return [0, 0]
+
+        if (this.scaleFn) {
+            const scaleVal = this.scaleFn(distFromGoal)
+            return scale(towardGoal, scaleVal * this.force)
+        }
+        else {
+            return scale(towardGoal, this.force)
+        }
+    }
+
+    static applyAll(attractors, obj) {
+        let goal = [0, 0]
+        attractors.forEach(attractor => {
+            const subGoal = attractor.apply(obj)
+            goal = add(goal, subGoal)
+        })
+        return goal
     }
 
 }
