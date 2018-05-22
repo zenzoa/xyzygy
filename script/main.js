@@ -1,8 +1,5 @@
 /*
 
-TODO
-- fix-up
-    - aliens may be curious about the player, indifferent, or scared (some aliens anyway?)
 - actual graphics
     - planets
     - show gifts on planets
@@ -14,23 +11,27 @@ TODO
     - fuel indicator
     - list of gifts / give gift button
     - end-screen
-- make avatar slower when clicking closer to it, maybe make camera follow instead of center
-- a planet cannot be a homeworld AND grow gifts
+- make avatar slower when clicking closer to it
 
 STRETCH
-- improve performance
-- communication
-    - aliens talk at you
-    - their speech is decoded when you become friends
-    - they tell you about their planet, their culture, their lives
-- colonial expansion
-    - when you give an alien a gift, they have the ability to colonize an empty planet
-        - maybe one (random) alien becomes a 'queen' and explores nearby planets
-    - that planet then becomes a homeworld for a new batch of aliens
-- ship trails
-- parallax bg
-- you can leave beacons to fast-travel back to that sector
-- you get a map or something at the end, showing planets you visited and aliens you befriended
+- behavior
+    - aliens react to other flocks
+    - communication
+        - aliens talk at you
+        - their speech is decoded when you become friends
+        - they tell you about their planet, their culture, their lives
+    - colonial expansion
+        - when you give an alien a gift, they have the ability to colonize an empty planet
+            - maybe one (random) alien becomes a 'queen' and explores nearby planets
+        - that planet then becomes a homeworld for a new batch of aliens
+- visuals
+    - ship trails
+    - parallax bg
+- gameplay
+    - camera follows avatar instead of centering on it
+    - improve performance
+    - you can leave beacons to fast-travel back to that sector
+    - you get a map or something at the end, showing planets you visited and aliens you befriended
 
 */
 
@@ -496,9 +497,9 @@ class Galaxy {
 
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
+        planets.forEach(planet => planet.update(canvas, this))
         this.gifts.forEach(gift => Gift.update(gift, canvas, this))
         flocks.forEach(flock => flock.update(canvas, this))
-        planets.forEach(planet => planet.update(canvas, this))
         this.avatar.update(canvas, this)
 
     }
@@ -517,7 +518,7 @@ class Sector {
 
         // some sectors have star systems
         const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
-        if (hasStar) this.star = new Star(galaxy, this.coords, this.rng)
+        if (hasStar) this.star = new Star(galaxy, this, this.coords, this.rng)
 
         // some sectors have aliens
         if (hasStar && this.star.planets.length > 0) {
@@ -525,7 +526,7 @@ class Sector {
             if (hasFlock) {
                 const homeworldIndex = randInt(this.rng, 0, this.star.planets.length)
                 const homeworld = this.star.planets[homeworldIndex]
-                this.flock = new Flock(this.coords, homeworld, this.rng)
+                this.flock = new Flock(stringifyCoords(this.coords), this.coords, homeworld, this.rng)
             }
         }
     }
@@ -538,7 +539,8 @@ class Sector {
 
 class Star {
 
-    constructor(galaxy, sector, rng) {
+    constructor(galaxy, parentSector, sector, rng) {
+        this.parentSector = parentSector
         this.sector = sector
 
         this.pos = randVector(rng, SECTOR_SIZE)
@@ -612,6 +614,7 @@ class Planet {
         this.absPos = absPosition(this.sector, this.pos)
 
         this.growsGifts = rng() <= GIFT_RATE
+        if (star.parentSector.flock) this.growsGifts = false
         this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
 
         this.hasFuel = this.getCache(galaxy, 'hasFuel') || false
@@ -790,18 +793,19 @@ class Boid {
         this.vel = [0, 0]
         this.acc = [0, 0]
 
+        this.isCurious = rng() <= flock.curiousRate
         this.hasGift = false
+
+        this.sightDist = this.isCurious ? flock.sightDist * 2 : flock.sightDist
+        this.sightSquared = this.sightDist * this.sightDist
     }
 
     applyForce(force) {
         this.acc = add(this.acc, force)
     }
 
-    seek(targetSector, targetPos) {
-        let target = absPosition(targetSector, targetPos)
-        let location = absPosition(this.sector, this.pos)
-
-        let desired = sub(target, location)
+    seek(target) {
+        let desired = sub(target, this.absPos)
         desired = scale(desired, this.flock.maxSpeed)
         let steer = sub(desired, this.vel)
         steer = limit(steer, this.flock.maxForce)
@@ -809,11 +813,8 @@ class Boid {
         return steer
     }
 
-    arrive(targetSector, targetPos, distance) {
-        let target = absPosition(targetSector, targetPos)
-        let location = absPosition(this.sector, this.pos)
-
-        let desired = sub(target, location)
+    arrive(target, distance) {
+        let desired = sub(target, this.absPos)
         let d = mag(desired)
         if (d < distance) {
             let m = mapValue(d, 0, distance, 0, this.flock.maxSpeed)
@@ -843,8 +844,9 @@ class Boid {
             let diff = sub(giftPos, this.absPos)
 
             // seek gifts within sight
-            if (square(diff) < this.flock.sightSquared) {
-                let giftForce = this.arrive(gift[SECTOR], gift[POS], this.flock.sightDist)
+            if (square(diff) < this.sightSquared) {
+                let giftPos = absPosition(gift[SECTOR], gift[POS])
+                let giftForce = this.arrive(giftPos, this.sightDist)
                 this.applyForce(giftForce)
             }
 
@@ -870,8 +872,8 @@ class Boid {
         let diff = sub(planet.absPos, this.absPos)
 
         // return home when you have a gift
-        let planetGoal = this.wander(planet.pos, planet.r * 10)
-        let planetForce = this.seek(planet.sector, planetGoal)
+        let planetGoal = this.wander(planet.absPos, planet.r * 10)
+        let planetForce = this.arrive(planetGoal)
         planetForce = scale(planetForce, 2)
         this.applyForce(planetForce)
 
@@ -938,7 +940,7 @@ class Boid {
             ali = scale(ali, this.flock.aliForce)
 
             coh = scale(cohSum, 1 / boidsInSight)
-            coh = this.seek(this.sector, coh)
+            coh = this.seek(absPosition(this.sector, coh))
             coh = scale(coh, this.flock.cohForce)
         }
 
@@ -963,10 +965,26 @@ class Boid {
             let diff = sub(this.absPos, obstaclePos)
             let minDist = obstacle[RADIUS] + this.flock.r
             if (square(diff) < minDist * minDist) {
-                avoid = add(avoid, setMag(diff, this.flock.maxForce * 2))
+                avoid = add(avoid, setMag(diff, this.flock.maxForce * 3))
             }
         })
         this.applyForce(avoid)
+    }
+
+    approachAvatar(galaxy) {
+        let avatar = galaxy.avatar
+        let diff = sub(avatar.absPos, this.absPos)
+
+        let avatarForce = this.flock.avatarForce
+        if (this.isCurious || this.flock.isFriend) avatarForce = avatarForce > 0 ? avatarForce * 2 : avatarForce * -1
+        if (this.hasGift) avatarForce *= 0.1
+
+        if (square(diff) < this.sightSquared) {
+            let avatarGoal = this.wander(avatar.absPos, avatar.r * 2)
+            let approach = this.arrive(avatarGoal, this.sightDist)
+            approach = scale(approach, avatarForce)
+            this.applyForce(approach)
+        }
     }
 
     updatePos() {
@@ -982,6 +1000,7 @@ class Boid {
         this.avoidObstacles(galaxy)
         this.handleGifts(galaxy)
         this.returnHome()
+        this.approachAvatar(galaxy)
 
         this.updatePos()
         this.draw(canvas)
@@ -989,7 +1008,8 @@ class Boid {
 
     draw(canvas) {
         if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
-        if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: COLORS.debug })
+        if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
+        if (DEBUG && this.isCurious) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: 'hotpink' })
 
         let angle = Math.atan2(this.vel[1], this.vel[0])
 
@@ -1021,7 +1041,8 @@ class Boid {
 
 class Flock {
 
-    constructor(sector, planet, rng) {
+    constructor(index, sector, planet, rng) {
+        this.index = index
         this.sector = sector
         this.planet = planet
 
@@ -1029,7 +1050,7 @@ class Flock {
         this.maxForce = randFloat(rng, 0.1, 0.01)
         this.r = 15
 
-        this.sightDist = 100
+        this.sightDist = randInt(rng, 50, 200)
         this.sightSquared = this.sightDist * this.sightDist
 
         this.aliForce = randFloat(rng, 0.1, 1.0)
@@ -1037,6 +1058,8 @@ class Flock {
         this.sepForce = -2.0
 
         this.exploreForce = randFloat(rng, 1, 10)
+        this.avatarForce = randFloat(rng, -1, 1)
+        this.curiousRate = 0.1
 
         this.giftForce = randFloat(rng, 0.1, 0.5)
         this.hasGift = false
