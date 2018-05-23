@@ -13,7 +13,18 @@
     - end-screen
 - make avatar slower when clicking closer to it
 
+BUGS & TUNING
+- bug? some aliens seem not to get any planet force
+- some homeworlds still have gifts?
+- greater homeworld homing after picking up a gift
+- weird circle in upper-left
+
 STRETCH
+- edge randomness
+    - some aliens are randomly HUGE
+    - some aliens are lone wanderers
+    - some aliens glitch-phase in and out of existence
+        - if you give them a gift, they drop something cool
 - behavior
     - aliens react to other flocks
     - communication
@@ -32,6 +43,7 @@ STRETCH
     - improve performance
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
+    - keyboard controls
 
 */
 
@@ -59,7 +71,7 @@ const MIN_GIFT_REGEN = FPS * 60
 const MAX_GIFT_REGEN = FPS * 600
 const AVATAR_SPEED = 10
 const AVOID_AVATAR = 0.3
-const FUEL_RATE = 1 / (FPS * 60 * 1)
+const FUEL_RATE = 1 / (FPS * 60 * 2)
 
 const SECTOR = 0
 const POS = 1
@@ -223,16 +235,17 @@ class Game {
     update() {
         this.moveAvatar()
 
-        this.canvas.update([this.galaxy], this.currentSector)
+        this.canvas.update(this.galaxy, this.currentSector)
 
         if (DEBUG) {
             this.canvas.context.font = '12px sans-serif'
             this.canvas.context.fillStyle = COLORS.debug
             this.canvas.context.fillText(`${this.currentSector[0]}, ${this.currentSector[1]}`, SCREEN_SIZE / 2, 22)
+
+            this.canvas.context.font = '24px sans-serif'
+            this.canvas.context.fillStyle = 'hotpink'
+            this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
         }
-        this.canvas.context.font = '24px sans-serif'
-        this.canvas.context.fillStyle = 'hotpink'
-        this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
     }
 
     start() {
@@ -256,6 +269,7 @@ class Canvas {
         this.el.height = height
 
         this.context = this.el.getContext('2d')
+        this.context.lineCap = 'round'
 
         this.interval = null
 
@@ -287,7 +301,7 @@ class Canvas {
     }
 
     drawShape(sector, pos, drawFn, settings) {
-        pos = this.getOffset(sector, pos)
+        pos = sector ? this.getOffset(sector, pos) : pos
         this.context.save()
         this.context.translate(pos[0], pos[1])
         this.context.beginPath()
@@ -306,6 +320,11 @@ class Canvas {
             this.context.strokeStyle = settings.stroke
             this.context.stroke()
         }
+    }
+
+    drawArc(sector, pos, r, settings) {
+        const draw = context => context.arc(0, 0, r, settings.start, settings.end, settings.anticlockwise)
+        this.drawShape(sector, pos, draw, settings)
     }
 
     drawCircle(sector, pos, r, settings) {
@@ -328,11 +347,53 @@ class Canvas {
         this.drawShape(sector, pos, draw, settings)
     }
 
+    drawSimpleLine(pos1, pos2, settings) {
+        this.context.beginPath()
+        this.context.moveTo(pos1[0], pos1[1])
+        this.context.lineTo(pos2[0], pos2[1])
+
+        this.context.lineWidth = settings.width || 1
+        this.context.strokeStyle = settings.stroke
+        this.context.stroke()
+    }
+
     clear() {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
-    update(children, currentSector) {
+    drawFuel(galaxy) {
+        let halfScreen = SCREEN_SIZE / 2
+        let edgeOffset = 10
+        let r = halfScreen - edgeOffset
+        let startAngle = 0 - (PI / 2)
+        let endAngle = PI * 2 * (1 - galaxy.avatar.fuel) - (PI / 2)
+
+        let settings = {
+            start: startAngle,
+            end: endAngle,
+            anticlockwise: true,
+            width: 1,
+            stroke: 'black'
+        }
+        this.drawArc(null, [halfScreen, halfScreen], r, settings)
+
+        // let length = 10
+        // let startPoint = [halfScreen, edgeOffset]
+        // this.drawSimpleLine(
+        //     [halfScreen, edgeOffset - length],
+        //     [halfScreen, edgeOffset + length],
+        //     { stroke: 'black', width: 0.2 }
+        // )
+        // let endPoint1 = [halfScreen + Math.cos(endAngle) * (r + length), halfScreen + Math.sin(endAngle) * (r + length)]
+        // let endPoint2 = [halfScreen + Math.cos(endAngle) * (r - length), halfScreen + Math.sin(endAngle) * (r - length)]
+        // this.drawSimpleLine(
+        //     endPoint1,
+        //     endPoint2,
+        //     { stroke: 'black', width: 0.2 }
+        // )
+    }
+
+    update(galaxy, currentSector) {
         this.clear()
         this.currentSector = currentSector
 
@@ -343,12 +404,13 @@ class Canvas {
         this.context.save()
         this.context.scale(ZOOM, ZOOM)
 
-        // update and draw children
-        children.forEach(child => {
-            if (child && child.update) child.update(this)
-        })
+        // update and draw galaxy
+        galaxy.update(this)
 
         this.context.restore()
+
+        // draw UI elements
+        this.drawFuel(galaxy)
     }
 
 }
@@ -721,7 +783,7 @@ class Avatar {
 
     seekMouse(galaxy) {
         const seekMouse = this.seek(galaxy.currentSector, this.target)
-        const isMoving = seekMouse[0] > 0 || seekMouse[1] > 0
+        const isMoving = Math.abs(seekMouse[0]) > 0 || Math.abs(seekMouse[1]) > 0
         if (isMoving) this.fuel -= FUEL_RATE
         if (this.fuel > 0) this.applyForce(seekMouse)
     }
@@ -732,6 +794,7 @@ class Avatar {
 
     pickUpFuel() {
         this.fuel++
+        if (this.fuel > 1) this.fuel = 1
     }
 
     avoidObstacles(galaxy) {
@@ -872,7 +935,7 @@ class Boid {
         let diff = sub(planet.absPos, this.absPos)
 
         // return home when you have a gift
-        let planetGoal = this.wander(planet.absPos, planet.r * 10)
+        let planetGoal = this.wander(planet.absPos, planet.r * 2)
         let planetForce = this.arrive(planetGoal)
         planetForce = scale(planetForce, 2)
         this.applyForce(planetForce)
@@ -976,11 +1039,11 @@ class Boid {
         let diff = sub(avatar.absPos, this.absPos)
 
         let avatarForce = this.flock.avatarForce
-        if (this.isCurious || this.flock.isFriend) avatarForce = avatarForce > 0 ? avatarForce * 2 : avatarForce * -1
+        if (this.isCurious || this.flock.isFriend) avatarForce = avatarForce > 0 ? avatarForce * 1.5 : avatarForce * -1
         if (this.hasGift) avatarForce *= 0.1
 
         if (square(diff) < this.sightSquared) {
-            let avatarGoal = this.wander(avatar.absPos, avatar.r * 2)
+            let avatarGoal = this.wander(avatar.absPos, (avatar.r + this.flock.r) * 2)
             let approach = this.arrive(avatarGoal, this.sightDist)
             approach = scale(approach, avatarForce)
             this.applyForce(approach)
@@ -1059,7 +1122,7 @@ class Flock {
 
         this.exploreForce = randFloat(rng, 1, 10)
         this.avatarForce = randFloat(rng, -1, 1)
-        this.curiousRate = 0.1
+        this.curiousRate = randFloat(rng, 0, 0.1)
 
         this.giftForce = randFloat(rng, 0.1, 0.5)
         this.hasGift = false
