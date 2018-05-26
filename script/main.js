@@ -1,19 +1,17 @@
 /*
 
+TO-DO
 - actual graphics
     - planets
     - indicate gift planets
     - indicate homeworlds
     - show fuel on planets
-    - show gift in front of boid when they're carrying it
 - actual ui
     - end-screen
 - make avatar slower when clicking closer to it
 
 BUGS & TUNING
-- bug? some aliens seem not to get any planet force
 - some homeworlds still have gifts?
-- greater homeworld homing after picking up a gift
 - weird circle in upper-left when sense radii are on
 
 STRETCH
@@ -385,29 +383,17 @@ class Canvas {
         let startAngle = 0 - (PI / 2)
         let endAngle = PI * 2 * (1 - galaxy.avatar.fuel) - (PI / 2)
 
+        let isLow = galaxy.avatar.fuel < 0.2
+
         let settings = {
             start: startAngle,
             end: endAngle,
             anticlockwise: true,
-            width: 1,
-            stroke: 'black'
+            width: isLow ? 6 : 3,
+            stroke: isLow ? 'hotpink' : 'black',
+
         }
         this.drawArc(null, [halfScreen, halfScreen], r, settings)
-
-        // let length = 10
-        // let startPoint = [halfScreen, edgeOffset]
-        // this.drawSimpleLine(
-        //     [halfScreen, edgeOffset - length],
-        //     [halfScreen, edgeOffset + length],
-        //     { stroke: 'black', width: 0.2 }
-        // )
-        // let endPoint1 = [halfScreen + Math.cos(endAngle) * (r + length), halfScreen + Math.sin(endAngle) * (r + length)]
-        // let endPoint2 = [halfScreen + Math.cos(endAngle) * (r - length), halfScreen + Math.sin(endAngle) * (r - length)]
-        // this.drawSimpleLine(
-        //     endPoint1,
-        //     endPoint2,
-        //     { stroke: 'black', width: 0.2 }
-        // )
     }
 
     update(galaxy, currentSector) {
@@ -796,7 +782,7 @@ class Avatar {
 
         this.target = pos
         this.gifts = 0
-        this.fuel =  1
+        this.fuel = 1
 
         this.giftAngle = 0
     }
@@ -912,6 +898,7 @@ class Boid {
         this.absPos = absPosition(this.sector, this.pos)
         this.vel = [0, 0]
         this.acc = [0, 0]
+        this.angle = 0
 
         this.isCurious = rng() <= flock.curiousRate
         this.hasGift = false
@@ -1107,6 +1094,19 @@ class Boid {
         }
     }
 
+    wanderRandomly() {
+        let d = this.flock.r * 2
+        let forward = [
+            Math.cos(this.angle) * d,
+            Math.sin(this.angle) * d
+        ]
+        forward = add(this.absPos, forward)
+        let goal = this.wander(forward, d)
+        let approach = this.seek(goal)
+        approach = scale(approach, 0.1)
+        this.applyForce(approach)
+    }
+
     updatePos() {
         this.vel = add(this.vel, this.acc)
         this.vel = limit(this.vel, this.flock.maxSpeed)
@@ -1121,24 +1121,35 @@ class Boid {
         this.handleGifts(galaxy)
         this.returnHome()
         this.approachAvatar(galaxy)
+        this.wanderRandomly()
 
         this.updatePos()
         this.draw(canvas)
     }
 
+    drawGift(canvas, angle) {
+        let relPos = [
+            Math.cos(angle) * (this.flock.r + GIFT_DISTANCE / 2),
+            Math.sin(angle) * (this.flock.r + GIFT_DISTANCE / 2)
+        ]
+        let giftPos = add(this.pos, relPos)
+
+        canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, { fill: 'black' })
+    }
+
     draw(canvas) {
-        if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
+        if (DEBUG && this.flock.isFriend) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
         // if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
         if (DEBUG && this.isCurious) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: 'hotpink' })
 
-        let angle = Math.atan2(this.vel[1], this.vel[0])
+        this.angle = Math.atan2(this.vel[1], this.vel[0])
 
         const bezPoint1 = this.flock.bezPoint1
         const bezPoint2 = this.flock.bezPoint2
         const scale = this.flock.r * 1.5 // smaller than expected because bezpoints can stretch ships outside bounds
 
         const drawing = context => {
-            context.rotate(angle)
+            context.rotate(this.angle)
             context.scale(scale, scale)
             context.translate(-0.5, 0)
             context.moveTo(0, 0)
@@ -1155,6 +1166,8 @@ class Boid {
         const settings = { fill: 'white', stroke: 'black', width: 1 }
 
         canvas.drawShape(this.sector, this.pos, drawing, settings)
+
+       if (this.hasGift) this.drawGift(canvas, this.angle)
     }
 
 }
