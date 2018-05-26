@@ -8,8 +8,8 @@
     - show gift in front of boid when they're carrying it
     - homeworlds
 - actual ui
-    - fuel indicator
-    - list of gifts / give gift button
+    - list of gifts
+    - give gift button
     - end-screen
 - make avatar slower when clicking closer to it
 
@@ -49,29 +49,42 @@ STRETCH
 
 let DEBUG = true
 let ZOOM = 1
+const FPS = 60
+
 const PI = Math.PI
 const RADIANS = (PI * 2) / 360
 const DEGREES = 360 / (PI * 2)
-const FPS = 60
+
 const SCREEN_SIZE = 800
 const SECTOR_SIZE = 600
 const SYSTEM_RATE = 0.33
+
 const MIN_STAR_RADIUS = 20
 const MAX_STAR_RADIUS = 100
+
+const MAX_ORBIT_RADIUS = SECTOR_SIZE
+
 const MAX_PLANETS = 6
 const MIN_PLANET_RADIUS = 5
 const MAX_PLANET_RADIUS = 30
-const MAX_ORBIT_RADIUS = SECTOR_SIZE
 const NEXT_PLANET_POWER = 1.5
 const MIN_PLANET_SPEED = PI / 36000
 const MAX_PLANET_SPEED = PI / 3600
+
 const ALIEN_RATE = 0.5
+
+const AVATAR_SPEED = 10
+const AVOID_AVATAR = 0.3
+
+const FUEL_RATE = 1 / (FPS * 60 * 2)
+
 const GIFT_RATE = 0.1
 const MIN_GIFT_REGEN = FPS * 60
 const MAX_GIFT_REGEN = FPS * 600
-const AVATAR_SPEED = 10
-const AVOID_AVATAR = 0.3
-const FUEL_RATE = 1 / (FPS * 60 * 2)
+const GIFT_SPEED = 0.05
+const GIFT_RADIUS = 3
+const GIFT_DISTANCE = 10
+const MAX_GIFTS = 6
 
 const SECTOR = 0
 const POS = 1
@@ -84,7 +97,7 @@ const COLORS = {
     'planet': 'black',
     'orbit': '#eee',
     'boid': 'plum',
-    'debug': 'white'
+    'debug': 'hotpink'
 }
 
 const randFloat = (rng, min, max) => rng() * (max - min) + min
@@ -542,9 +555,9 @@ class Galaxy {
                     }
 
                     // check to see if avatar is touching a planet with a gift
-                    if (planet.hasGift) {
+                    if (planet.hasGift && this.avatar.gifts < MAX_GIFTS) {
                         let diff = sub(planet.absPos, this.avatar.absPos)
-                        if (square(diff) < Math.pow(planet.r + this.avatar.r, 2)) {
+                        if (square(diff) < Math.pow(planet.r + GIFT_DISTANCE + this.avatar.r, 2)) {
                             this.avatar.pickUpGift()
                             planet.pickUpGift(this)
                         }
@@ -721,9 +734,24 @@ class Planet {
         return orbitalPosition
     }
 
+    drawGift(canvas, galaxy) {
+        let ticksPerRotation = (PI * 2) / GIFT_SPEED
+        let remainderTicks = galaxy.ticks % ticksPerRotation
+        let rotationPortion = remainderTicks / ticksPerRotation
+        let angle = this.startAngle + (rotationPortion * PI * 2)
+
+        let relPos = [
+            Math.cos(angle) * (this.r + GIFT_DISTANCE),
+            Math.sin(angle) * (this.r + GIFT_DISTANCE)
+        ]
+        let giftPos = add(this.pos, relPos)
+
+        canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, { fill: 'black' })
+    }
+
     update(canvas, galaxy) {
         // move the planet along its orbital path
-        const ticksPerRotation = (PI * 2) /  this.speed
+        const ticksPerRotation = (PI * 2) / this.speed
         const remainderTicks = galaxy.ticks % ticksPerRotation
         const rotationPortion = remainderTicks / ticksPerRotation
         this.angle = this.startAngle + (rotationPortion * PI * 2)
@@ -737,10 +765,13 @@ class Planet {
         }
 
         // draw planets
-        if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'green' })
-        if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, { fill: 'green' })
+        // if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'green' })
+        // if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, { fill: 'green' })
         if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'hotpink' })
         canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'white', stroke: 'black', width: 2 })
+
+        // draw gifts
+        if (this.hasGift) this.drawGift(canvas, galaxy)
     }
 
 }
@@ -762,6 +793,8 @@ class Avatar {
         this.target = pos
         this.gifts = 0
         this.fuel =  1
+
+        this.giftAngle = 0
     }
 
     applyForce(force) {
@@ -826,9 +859,29 @@ class Avatar {
         this.draw(canvas)
     }
 
+    drawGifts(canvas) {
+        let numGifts = this.gifts
+
+        this.giftAngle += GIFT_SPEED
+        if (this.giftAngle > PI * 2) this.giftAngle -= PI * 2
+        let angleOffset = (PI * 2) / numGifts
+
+        for (var i = 0; i < numGifts; i++) {
+            let angle = this.giftAngle + (i * angleOffset)
+            let relPos = [
+                Math.cos(angle) * (this.r + GIFT_DISTANCE),
+                Math.sin(angle) * (this.r + GIFT_DISTANCE)
+            ]
+            let giftPos = add(this.pos, relPos)
+            canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, { fill: 'black' })
+        }
+    }
+
     draw(canvas) {
+        this.drawGifts(canvas)
+
         if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, { stroke: COLORS.debug })
-        canvas.drawCircle(this.sector, this.pos, this.r, { fill: (this.fuel <= 0 ? 'black' : 'hotpink') })
+        canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'black' })
     }
 
 }
@@ -1071,7 +1124,7 @@ class Boid {
 
     draw(canvas) {
         if (DEBUG && (this.flock.isFriend || this.hasGift)) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
-        if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
+        // if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
         if (DEBUG && this.isCurious) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: 'hotpink' })
 
         let angle = Math.atan2(this.vel[1], this.vel[0])
