@@ -2,14 +2,11 @@
 
 - actual graphics
     - planets
-    - show gifts on planets
+    - indicate gift planets
+    - indicate homeworlds
     - show fuel on planets
-    - drop gift ahead of player
     - show gift in front of boid when they're carrying it
-    - homeworlds
 - actual ui
-    - list of gifts
-    - give gift button
     - end-screen
 - make avatar slower when clicking closer to it
 
@@ -17,7 +14,7 @@ BUGS & TUNING
 - bug? some aliens seem not to get any planet force
 - some homeworlds still have gifts?
 - greater homeworld homing after picking up a gift
-- weird circle in upper-left
+- weird circle in upper-left when sense radii are on
 
 STRETCH
 - edge randomness
@@ -191,18 +188,13 @@ class Game {
 
         el.addEventListener('contextmenu', e => e.preventDefault())
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
-
-        document.addEventListener('keydown', e => {
-            if (e.key === ' ' && this.galaxy.avatar.gifts > 0) {
-                this.galaxy.avatar.gifts--
-                this.galaxy.gifts.push([this.galaxy.avatar.sector, this.galaxy.avatar.pos, 5])
-            }
-        })
     }
 
     startMoving(e) {
         this.mouseDown = true
         this.changeDirection(e)
+
+        this.dropGift()
     }
 
     stopMoving() {
@@ -218,6 +210,18 @@ class Game {
             const x = (e.clientX - offsetX) * zoomX
             const y = (e.clientY - offsetY) * zoomY
             this.mousePos = [x, y]
+        }
+    }
+
+    dropGift() {
+        if (this.avatar.gifts <= 0) return
+        let mousePos = sub(this.mousePos, this.canvas.cameraOffset)
+        let diff = sub(mousePos, this.avatar.pos)
+        let sqDist = square(diff)
+        let maxDist = this.avatar.r + GIFT_DISTANCE + GIFT_RADIUS
+        if (sqDist < maxDist * maxDist) {
+            this.galaxy.avatar.gifts--
+            this.galaxy.gifts.push([this.galaxy.avatar.sector, this.galaxy.avatar.pos, GIFT_RADIUS])
         }
     }
 
@@ -864,7 +868,7 @@ class Avatar {
 
         this.giftAngle += GIFT_SPEED
         if (this.giftAngle > PI * 2) this.giftAngle -= PI * 2
-        let angleOffset = (PI * 2) / numGifts
+        let angleOffset = (PI * 2) / MAX_GIFTS
 
         for (var i = 0; i < numGifts; i++) {
             let angle = this.giftAngle + (i * angleOffset)
@@ -1215,7 +1219,7 @@ class Flock {
 class Gift {
 
     static update(gift, canvas, galaxy) {
-        canvas.drawCircle(gift[SECTOR], gift[POS], gift[RADIUS], { fill: COLORS.debug })
+        canvas.drawCircle(gift[SECTOR], gift[POS], gift[RADIUS], { fill: 'black' })
     }
 
 }
