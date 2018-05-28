@@ -39,101 +39,101 @@ STRETCH
 
 let DEBUG = false
 let ZOOM = 1
-const FPS = 60
+let FPS = 60
 
-const PI = Math.PI
-const RADIANS = (PI * 2) / 360
-const DEGREES = 360 / (PI * 2)
+let PI = Math.PI
+let RADIANS = (PI * 2) / 360
+let DEGREES = 360 / (PI * 2)
 
-const SCREEN_SIZE = 800
-const SECTOR_SIZE = 600
-const SYSTEM_RATE = 0.33
+let SCREEN_SIZE = 800
+let SECTOR_SIZE = 600
+let SYSTEM_RATE = 0.33
 
-const MIN_STAR_RADIUS = 20
-const MAX_STAR_RADIUS = 100
+let MIN_STAR_RADIUS = 20
+let MAX_STAR_RADIUS = 100
 
-const MAX_ORBIT_RADIUS = SECTOR_SIZE
+let MAX_ORBIT_RADIUS = SECTOR_SIZE
 
-const MAX_PLANETS = 6
-const MIN_PLANET_RADIUS = 5
-const MAX_PLANET_RADIUS = 30
-const NEXT_PLANET_POWER = 1.5
-const MIN_PLANET_SPEED = PI / 36000
-const MAX_PLANET_SPEED = PI / 3600
+let MAX_PLANETS = 6
+let MIN_PLANET_RADIUS = 5
+let MAX_PLANET_RADIUS = 30
+let NEXT_PLANET_POWER = 1.5
+let MIN_PLANET_SPEED = PI / 36000
+let MAX_PLANET_SPEED = PI / 3600
 
-const ALIEN_RATE = 0.5
+let ALIEN_RATE = 0.5
 
-const AVATAR_SPEED = 10
-const AVOID_AVATAR = 0.3
+let AVATAR_SPEED = 10
+let AVOID_AVATAR = 0.3
 
-const FUEL_RATE = 1 / (FPS * 60 * 2)
+let FUEL_RATE = 1 / (FPS * 60 * 2)
 
-const GIFT_RATE = 0.1
-const MIN_GIFT_REGEN = FPS * 60
-const MAX_GIFT_REGEN = FPS * 600
-const GIFT_SPEED = 0.05
-const GIFT_RADIUS = 3
-const GIFT_DISTANCE = 10
-const MAX_GIFTS = 6
+let GIFT_RATE = 0.1
+let MIN_GIFT_REGEN = FPS * 60
+let MAX_GIFT_REGEN = FPS * 600
+let GIFT_SPEED = 0.05
+let GIFT_RADIUS = 3
+let GIFT_DISTANCE = 10
+let MAX_GIFTS = 6
 
-const SECTOR = 0
-const POS = 1
-const RADIUS = 2
+let SECTOR = 0
+let POS = 1
+let RADIUS = 2
 
-const COLORS = {
+let COLORS = {
     'debug': 'hotpink'
 }
 
-const randFloat = (rng, min, max) => rng() * (max - min) + min
-const randInt = (rng, min, max) => Math.floor(rng() * (max - min) + min)
-const randVector = (rng, scale = 1) => [rng() * scale, rng() * scale]
+let randFloat = (rng, min, max) => rng() * (max - min) + min
+let randInt = (rng, min, max) => Math.floor(rng() * (max - min) + min)
+let randVector = (rng, scale = 1) => [rng() * scale, rng() * scale]
 
-const add = (v1, v2) => [v1[0] + v2[0], v1[1] + v2[1]]
-const sub = (v1, v2) => [v1[0] - v2[0], v1[1] - v2[1]]
-const scale = (v, s) => [v[0] * s, v[1] * s]
-const square = (v) => v[0] * v[0] + v[1] * v[1]
+let add = (v1, v2) => [v1[0] + v2[0], v1[1] + v2[1]]
+let sub = (v1, v2) => [v1[0] - v2[0], v1[1] - v2[1]]
+let scale = (v, s) => [v[0] * s, v[1] * s]
+let square = (v) => v[0] * v[0] + v[1] * v[1]
 
-const mag = (v) => {
-    const a = Math.abs(v[0])
-    const b = Math.abs(v[1])
-    const lo = Math.min(a, b)
-    const hi = Math.max(a, b)
+let mag = (v) => {
+    let a = Math.abs(v[0])
+    let b = Math.abs(v[1])
+    let lo = Math.min(a, b)
+    let hi = Math.max(a, b)
     return hi + 3 * lo / 32 + Math.max(0, 2 * lo - hi) / 8 + Math.max(0, 4 * lo - hi) / 16
 }
 
-const normalize = (v) => {
-    const length = mag(v)
+let normalize = (v) => {
+    let length = mag(v)
     return scale(v, 1 / length)
 }
 
-const setMag = (v, s) => {
-    const length = mag(v)
-    const mod = s / length
+let setMag = (v, s) => {
+    let length = mag(v)
+    let mod = s / length
     return scale(v, mod)
 }
 
-const limit = (v, max) => {
-    const length = mag(v)
+let limit = (v, max) => {
+    let length = mag(v)
     if (length < max) return v
     else return setMag(v, max)
 }
 
-const mapValue = (value, lo1, hi1, lo2, hi2) => {
-    const base = (value - lo1) / (hi1 - lo1)
+let mapValue = (value, lo1, hi1, lo2, hi2) => {
+    let base = (value - lo1) / (hi1 - lo1)
     return base * (hi2 - lo2) + lo2
 }
 
-const absPosition = (sector, pos) => {
-    const sectorOffset = scale(sector, SECTOR_SIZE)
-    const adjustedPos = add(sectorOffset, pos)
+let absPosition = (sector, pos) => {
+    let sectorOffset = scale(sector, SECTOR_SIZE)
+    let adjustedPos = add(sectorOffset, pos)
     return adjustedPos
 }
 
-const stringifyCoords = (coords) => {
+let stringifyCoords = (coords) => {
     return `${coords[0]}, ${coords[1]}`
 }
 
-const stringifyPlanetCoords = (coords, planetIndex) => {
+let stringifyPlanetCoords = (coords, planetIndex) => {
     return `${coords[0]}, ${coords[1]}, ${planetIndex}`
 }
 
@@ -144,7 +144,7 @@ class Game {
         this.frame = document.getElementById('frame')
 
         // setup canvas
-        const el = document.getElementById('canvas')
+        let el = document.getElementById('canvas')
         this.canvas = new Canvas(el, SCREEN_SIZE, SCREEN_SIZE)
 
         // setup galaxy
@@ -193,12 +193,12 @@ class Game {
 
     changeDirection(e) {
         if (this.mouseDown) {
-            const offsetX = this.frame.offsetLeft + this.screen.offsetLeft
-            const offsetY = this.frame.offsetTop + this.screen.offsetTop
-            const zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
-            const zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
-            const x = (e.clientX - offsetX) * zoomX
-            const y = (e.clientY - offsetY) * zoomY
+            let offsetX = this.frame.offsetLeft + this.screen.offsetLeft
+            let offsetY = this.frame.offsetTop + this.screen.offsetTop
+            let zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
+            let zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
+            let x = (e.clientX - offsetX) * zoomX
+            let y = (e.clientY - offsetY) * zoomY
             this.mousePos = [x, y]
         }
     }
@@ -230,7 +230,7 @@ class Game {
         if (mx !== 0 || my !== 0) {
             this.currentSector = add(this.currentSector, [mx, my])
             this.avatar.sector = this.currentSector
-            const posOffset = scale([mx, my], -SECTOR_SIZE)
+            let posOffset = scale([mx, my], -SECTOR_SIZE)
             this.avatar.pos = add(this.avatar.pos, posOffset)
             this.avatar.target = add(this.avatar.target, posOffset)
         }
@@ -300,10 +300,10 @@ class Canvas {
     }
 
     getOffset(sector, pos) {
-        const relativeSector = sub(sector, this.currentSector)
-        const sectorPos = scale(relativeSector, SECTOR_SIZE)
-        const relativePos = add(sectorPos, pos)
-        const offsetPos = add(relativePos, this.cameraOffset)
+        let relativeSector = sub(sector, this.currentSector)
+        let sectorPos = scale(relativeSector, SECTOR_SIZE)
+        let relativePos = add(sectorPos, pos)
+        let offsetPos = add(relativePos, this.cameraOffset)
         return offsetPos
     }
 
@@ -330,25 +330,25 @@ class Canvas {
     }
 
     drawArc(sector, pos, r, settings) {
-        const draw = context => context.arc(0, 0, r, settings.start, settings.end, settings.anticlockwise)
+        let draw = context => context.arc(0, 0, r, settings.start, settings.end, settings.anticlockwise)
         this.drawShape(sector, pos, draw, settings)
     }
 
     drawCircle(sector, pos, r, settings) {
-        const draw = context => context.arc(0, 0, r, 0, PI * 2)
+        let draw = context => context.arc(0, 0, r, 0, PI * 2)
         this.drawShape(sector, pos, draw, settings)
     }
 
     drawRect(sector, pos, width, height, settings) {
-        const draw = context => context.rect(0, 0, width, height)
+        let draw = context => context.rect(0, 0, width, height)
         this.drawShape(sector, pos, draw, settings)
     }
 
     drawLine(sector, pos, endSector, endPos, settings) {
-        const draw = context => {
+        let draw = context => {
             context.moveTo(0, 0)
-            const relSector = sub(sector, endSector)
-            const relEndPos = absPosition(relSector, endPos)
+            let relSector = sub(sector, endSector)
+            let relEndPos = absPosition(relSector, endPos)
             context.lineTo(relEndPos[0], relEndPos[1])
         }
         this.drawShape(sector, pos, draw, settings)
@@ -435,7 +435,7 @@ class Galaxy {
     }
 
     getSector(coords, sectorsInRange) {
-        const key = stringifyCoords(coords)
+        let key = stringifyCoords(coords)
         if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
         return this.sectorCache[key]
     }
@@ -451,7 +451,7 @@ class Galaxy {
     }
 
     cacheSector(coords, key, sectorsInRange) {
-        const sector = new Sector(this, coords)
+        let sector = new Sector(this, coords)
         this.sectorCache[key] = sector
         this.sectorCacheKeys.push(key)
         if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
@@ -466,29 +466,29 @@ class Galaxy {
     }
 
     uncacheSector(sectorsInRange = []) {
-        const sectorsOutOfRange = this.sectorCacheKeys.filter(key => !sectorsInRange.includes(key))
+        let sectorsOutOfRange = this.sectorCacheKeys.filter(key => !sectorsInRange.includes(key))
         if (sectorsOutOfRange.length === 0) return
 
-        const keyToRemove = sectorsOutOfRange[0]
+        let keyToRemove = sectorsOutOfRange[0]
         this.sectorCache[keyToRemove] = undefined
         this.sectorCacheKeys = this.sectorCacheKeys.slice(1)
     }
 
     uncacheFlocks(sectorsInRange = []) {
-        const range = SECTOR_SIZE * 0.5 * this.range
-        const squareRange = range * range
-        const absAvatarPos = absPosition(this.avatar.sector, this.avatar.pos)
+        let range = SECTOR_SIZE * 0.5 * this.range
+        let squareRange = range * range
+        let absAvatarPos = absPosition(this.avatar.sector, this.avatar.pos)
         let keysToRemove = []
 
         this.flockCacheKeys.forEach(key => {
             if (sectorsInRange.includes(key)) return
 
-            const flock = this.flockCache[key]
+            let flock = this.flockCache[key]
             let boidsWithinRange = false
 
             flock.boids.forEach(boid => {
-                const absBoidPos = absPosition(boid.sector, boid.pos)
-                const diff = sub(absAvatarPos, absBoidPos)
+                let absBoidPos = absPosition(boid.sector, boid.pos)
+                let diff = sub(absAvatarPos, absBoidPos)
                 if (square(diff) < squareRange) boidsWithinRange = true
             })
 
@@ -502,7 +502,7 @@ class Galaxy {
     update(canvas, galaxy) {
         this.ticks++
 
-        const sectorsInRange = this.sectorsInRange(canvas.currentSector)
+        let sectorsInRange = this.sectorsInRange(canvas.currentSector)
 
         this.obstacles = [
             [this.avatar.sector, this.avatar.pos, this.avatar.r]
@@ -514,7 +514,7 @@ class Galaxy {
 
         sectorsInRange.forEach(coords => {
 
-            const sector = this.getSector(coords, sectorsInRange)
+            let sector = this.getSector(coords, sectorsInRange)
             sector.update(canvas)
 
             if (sector.star) {
@@ -551,7 +551,7 @@ class Galaxy {
 
         })
 
-        const flocks = this.flockCacheKeys.map(key => this.flockCache[key])
+        let flocks = this.flockCacheKeys.map(key => this.flockCache[key])
 
         orbits.forEach(orbit => orbit.update(canvas, this))
         stars.forEach(star => star.update(canvas, this))
@@ -575,15 +575,15 @@ class Sector {
         this.rng = new Math.seedrandom(`coordinates: ${coords[0]}, ${coords[1]}`)
 
         // some sectors have star systems
-        const hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
+        let hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
         if (hasStar) this.star = new Star(galaxy, this, this.coords, this.rng)
 
         // some sectors have aliens
         if (hasStar && this.star.planets.length > 0) {
-            const hasFlock = this.rng() <= ALIEN_RATE
+            let hasFlock = this.rng() <= ALIEN_RATE
             if (hasFlock) {
-                const homeworldIndex = randInt(this.rng, 0, this.star.planets.length)
-                const homeworld = this.star.planets[homeworldIndex]
+                let homeworldIndex = randInt(this.rng, 0, this.star.planets.length)
+                let homeworld = this.star.planets[homeworldIndex]
                 this.flock = new Flock(stringifyCoords(this.coords), this.coords, homeworld, this.rng)
             }
         }
@@ -605,32 +605,32 @@ class Star {
         this.r = randInt(rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
 
         // give the star a bunch of orbiting planets, spaced out somewhat
-        const numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
+        let numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
         this.planets = []
         let orbitRadius = this.r
         let lastPlanetRadius = this.r
         for (var i = 0; i < numPlanets; i++) {
-            const planetRadius = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
+            let planetRadius = randInt(rng, MIN_PLANET_RADIUS, MAX_PLANET_RADIUS)
             lastPlanetRadius = planetRadius
-            const separation = lastPlanetRadius + planetRadius
+            let separation = lastPlanetRadius + planetRadius
             orbitRadius += randInt(rng, separation, separation * Math.pow(i + 1, NEXT_PLANET_POWER))
             if (orbitRadius <= MAX_ORBIT_RADIUS) this.planets.push(new Planet(galaxy, this, i, orbitRadius, planetRadius, rng))
         }
     }
 
     drawRays(canvas, galaxy) {
-        const numRays = this.r * 2
-        const rayAngle = (PI * 2) / numRays
-        const rayLength = this.r * 0.2
-        const rayTime = 200
-        const settings = { stroke: 'black', width: 1 }
-        const timeMod = Math.sin((galaxy.ticks % rayTime) / rayTime * PI * 2)
+        let numRays = this.r * 2
+        let rayAngle = (PI * 2) / numRays
+        let rayLength = this.r * 0.2
+        let rayTime = 200
+        let settings = { stroke: 'black', width: 1 }
+        let timeMod = Math.sin((galaxy.ticks % rayTime) / rayTime * PI * 2)
         for (var i = 0; i < numRays; i++) {
-            const angle = i * rayAngle
-            const baseLength = this.r + rayLength
-            const length = baseLength + (Math.sin(angle * numRays / 6) * rayLength * timeMod)
-            const x = Math.cos(angle) * length
-            const y = Math.sin(angle) * length
+            let angle = i * rayAngle
+            let baseLength = this.r + rayLength
+            let length = baseLength + (Math.sin(angle * numRays / 6) * rayLength * timeMod)
+            let x = Math.cos(angle) * length
+            let y = Math.sin(angle) * length
             canvas.drawLine(this.sector, this.pos, this.sector, [x, y], settings)
         }
     }
@@ -681,13 +681,13 @@ class Planet {
     }
 
     getCache(galaxy, key) {
-        const planetKey = stringifyPlanetCoords(this.sector, this.index)
+        let planetKey = stringifyPlanetCoords(this.sector, this.index)
         if (!galaxy.planetCache[planetKey]) return undefined
         else galaxy.planetCache[planetKey][key]
     }
 
     setCache(galaxy, key, value) {
-        const planetKey = stringifyPlanetCoords(this.sector, this.index)
+        let planetKey = stringifyPlanetCoords(this.sector, this.index)
         if (!galaxy.planetCache[planetKey]) galaxy.planetCache[planetKey] = {}
         galaxy.planetCache[planetKey][key] = value
         this[key] = value
@@ -711,9 +711,9 @@ class Planet {
     }
 
     calcPos() {
-        const unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
-        const scaledVector = scale(unitVector, this.orbit.r)
-        const orbitalPosition = add(scaledVector, this.orbit.pos)
+        let unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
+        let scaledVector = scale(unitVector, this.orbit.r)
+        let orbitalPosition = add(scaledVector, this.orbit.pos)
         return orbitalPosition
     }
 
@@ -734,9 +734,9 @@ class Planet {
 
     update(canvas, galaxy) {
         // move the planet along its orbital path
-        const ticksPerRotation = (PI * 2) / this.speed
-        const remainderTicks = galaxy.ticks % ticksPerRotation
-        const rotationPortion = remainderTicks / ticksPerRotation
+        let ticksPerRotation = (PI * 2) / this.speed
+        let remainderTicks = galaxy.ticks % ticksPerRotation
+        let rotationPortion = remainderTicks / ticksPerRotation
         this.angle = this.startAngle + (rotationPortion * PI * 2)
         if (this.angle > PI * 2) this.angle -= PI * 2
         this.pos = this.calcPos()
@@ -791,11 +791,11 @@ class Avatar {
     }
 
     seek(targetSector, targetPos, targetDist) {
-        const diff = targetDist || sub(targetPos, this.pos)
+        let diff = targetDist || sub(targetPos, this.pos)
         let force
         if (square(diff) < this.seekDist * this.seekDist) {
-            const dist = mag(diff)
-            const m = mapValue(dist, 0, this.seekDist, 0, this.maxSpeed)
+            let dist = mag(diff)
+            let m = mapValue(dist, 0, this.seekDist, 0, this.maxSpeed)
             force = setMag(diff, m)
         }
         else force = setMag(diff, this.maxSpeed)
@@ -804,8 +804,8 @@ class Avatar {
     }
 
     seekMouse(galaxy) {
-        const seekMouse = this.seek(galaxy.currentSector, this.target)
-        const isMoving = Math.abs(seekMouse[0]) > 0 || Math.abs(seekMouse[1]) > 0
+        let seekMouse = this.seek(galaxy.currentSector, this.target)
+        let isMoving = Math.abs(seekMouse[0]) > 0 || Math.abs(seekMouse[1]) > 0
         if (isMoving) this.fuel -= FUEL_RATE
         if (this.fuel > 0) this.applyForce(seekMouse)
     }
@@ -1143,11 +1143,11 @@ class Boid {
 
         this.angle = Math.atan2(this.vel[1], this.vel[0])
 
-        const bezPoint1 = this.flock.bezPoint1
-        const bezPoint2 = this.flock.bezPoint2
-        const scale = this.flock.r * 1.5 // smaller than expected because bezpoints can stretch ships outside bounds
+        let bezPoint1 = this.flock.bezPoint1
+        let bezPoint2 = this.flock.bezPoint2
+        let scale = this.flock.r * 1.5 // smaller than expected because bezpoints can stretch ships outside bounds
 
-        const drawing = context => {
+        let drawing = context => {
             context.rotate(this.angle)
             context.scale(scale, scale)
             context.translate(-0.5, 0)
@@ -1162,7 +1162,7 @@ class Boid {
                 0, 0)
         }
 
-        const settings = { fill: 'white', stroke: 'black', width: 1 }
+        let settings = { fill: 'white', stroke: 'black', width: 1 }
 
         canvas.drawShape(this.sector, this.pos, drawing, settings)
 
@@ -1202,7 +1202,7 @@ class Flock {
         this.bezPoint1 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
         this.bezPoint2 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
 
-        const numBoids = randInt(rng, 1, 20)
+        let numBoids = randInt(rng, 1, 20)
         this.boids = []
         for(var i = 0; i < numBoids; i++) {
             this.boids.push(new Boid(i, this, sector, rng))
@@ -1242,7 +1242,7 @@ window.onload = () => {
 
     noise.seed(42)
 
-    const game = new Game()
+    let game = new Game()
     game.start()
 
 }
