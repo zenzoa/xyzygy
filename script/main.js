@@ -1,12 +1,9 @@
 /*
 
 TO-DO
-- actual graphics
-    - planets
+- pretty planets
     - indicate gift planets
     - indicate homeworlds
-- actual ui
-    - end-screen
 - make avatar slower when clicking closer to it
 
 STRETCH
@@ -40,6 +37,7 @@ STRETCH
 let DEBUG = false
 let ZOOM = 1
 let FPS = 60
+let RANDOM_SEED = 42
 
 let PI = Math.PI
 let RADIANS = (PI * 2) / 360
@@ -369,14 +367,16 @@ class Canvas {
     }
 
     drawFuel(galaxy) {
+        let fuel = galaxy.avatar.fuel
+
         let halfScreen = SCREEN_SIZE / 2
         let edgeOffset = 10
         let r = halfScreen - edgeOffset
         let startAngle = 0 - (PI / 2)
-        let remainingFuel = galaxy.avatar.fuel === 1 ? 1 : 1 - galaxy.avatar.fuel
+        let remainingFuel = fuel === 1 ? 1 : 1 - fuel
         let endAngle = PI * 2 * remainingFuel - (PI / 2)
 
-        let isLow = galaxy.avatar.fuel < 0.2
+        let isLow = false // fuel < 0.2
 
         let settings = {
             start: startAngle,
@@ -387,6 +387,17 @@ class Canvas {
 
         }
         this.drawArc(null, [halfScreen, halfScreen], r, settings)
+
+        if (fuel <= 0) this.drawEndScreen()
+    }
+
+    drawEndScreen() {
+        let halfScreen = SCREEN_SIZE / 2
+        this.drawCircle(null, [halfScreen, halfScreen], halfScreen, { fill: 'black' })
+
+        this.context.font = '24px monospace'
+        this.context.fillStyle = 'white'
+        this.context.fillText('you ran out of fuel', halfScreen - 120, halfScreen)
     }
 
     update(galaxy, currentSector) {
@@ -1240,7 +1251,7 @@ class Gift {
 
 window.onload = () => {
 
-    noise.seed(42)
+    noise.seed(RANDOM_SEED)
 
     let game = new Game()
     game.start()
