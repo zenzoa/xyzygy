@@ -5,17 +5,12 @@ TO-DO
     - planets
     - indicate gift planets
     - indicate homeworlds
-    - show fuel on planets
 - actual ui
     - end-screen
 - make avatar slower when clicking closer to it
 
-BUGS & TUNING
-- some homeworlds still have gifts?
-- weird circle in upper-left when sense radii are on
-
 STRETCH
-- edge randomness
+- edge randomness (maybe more likely as you get past galactic center)
     - some aliens are randomly HUGE
     - some aliens are lone wanderers
     - some aliens glitch-phase in and out of existence
@@ -42,7 +37,7 @@ STRETCH
 
 */
 
-let DEBUG = true
+let DEBUG = false
 let ZOOM = 1
 const FPS = 60
 
@@ -86,12 +81,6 @@ const POS = 1
 const RADIUS = 2
 
 const COLORS = {
-    'background': 'white',
-    'avatar': 'hotpink',
-    'star': '#ccc',
-    'planet': 'black',
-    'orbit': '#eee',
-    'boid': 'plum',
     'debug': 'hotpink'
 }
 
@@ -162,8 +151,11 @@ class Game {
         this.galaxy = new Galaxy()
 
         // start at a random sector
-        // this.galaxy = new Galaxy(randInt(Math.random, -100, 100), randInt(Math.random, -100, 100))
-        this.currentSector = [0, 0]
+        // this.currentSector = [0, 0]
+        this.currentSector = [
+            randInt(Math.random, -50, 50),
+            randInt(Math.random, -50, 50)
+        ]
 
         // create player avatar
         this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
@@ -381,7 +373,8 @@ class Canvas {
         let edgeOffset = 10
         let r = halfScreen - edgeOffset
         let startAngle = 0 - (PI / 2)
-        let endAngle = PI * 2 * (1 - galaxy.avatar.fuel) - (PI / 2)
+        let remainingFuel = galaxy.avatar.fuel === 1 ? 1 : 1 - galaxy.avatar.fuel
+        let endAngle = PI * 2 * remainingFuel - (PI / 2)
 
         let isLow = galaxy.avatar.fuel < 0.2
 
@@ -679,12 +672,12 @@ class Planet {
         this.absPos = absPosition(this.sector, this.pos)
 
         this.growsGifts = rng() <= GIFT_RATE
-        if (star.parentSector.flock) this.growsGifts = false
         this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
 
         this.hasFuel = this.getCache(galaxy, 'hasFuel') || false
         this.hasGift = this.getCache(galaxy, 'hasGift') || this.growsGifts
         this.lastGiftPickup = this.getCache(galaxy, 'lastGiftPickup') || 0
+        this.isHomeworld = false
     }
 
     getCache(galaxy, key) {
@@ -755,13 +748,19 @@ class Planet {
         }
 
         // draw planets
-        // if (this.growsGifts) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'green' })
-        // if (this.hasGift) canvas.drawCircle(this.sector, this.pos, this.r + 4, { fill: 'green' })
-        if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'hotpink' })
+        if (this.growsGifts) {
+
+        }
+        if (this.isHomeworld) {
+
+        }
         canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'white', stroke: 'black', width: 2 })
 
         // draw gifts
         if (this.hasGift) this.drawGift(canvas, galaxy)
+
+        // draw fuel
+        if (this.hasFuel) canvas.drawCircle(this.sector, this.pos, this.r + 4, { stroke: 'black', width: 1 })
     }
 
 }
@@ -1178,6 +1177,8 @@ class Flock {
         this.index = index
         this.sector = sector
         this.planet = planet
+        planet.isHomeworld = true
+        planet.growsGifts = false
 
         this.maxSpeed = randFloat(rng, 0.5, 4)
         this.maxForce = randFloat(rng, 0.1, 0.01)
