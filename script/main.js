@@ -784,6 +784,7 @@ class Avatar {
         this.acc = [0, 0]
         this.absPos = absPosition(sector, pos)
         this.r = 10
+        this.angle = 0
 
         this.maxSpeed = 5
         this.maxForce = 0.9
@@ -879,8 +880,23 @@ class Avatar {
     draw(canvas) {
         this.drawGifts(canvas)
 
+        let scale = this.r
+        if (Math.abs(this.vel[0]) > 0 || Math.abs(this.vel[1]) > 0) {
+            this.angle = Math.atan2(this.vel[1], this.vel[0])
+        }
+
+        let drawing = context => {
+            context.rotate(this.angle)
+            context.scale(scale, scale)
+            context.translate(-0.5, -0.5)
+            context.rect(0, 0,  1, 1)
+        }
+
+        let settings = { fill: 'black' }
+
+        canvas.drawShape(this.sector, this.pos, drawing, settings)
+
         if (DEBUG) canvas.drawCircle(this.sector, this.target, this.r, { stroke: COLORS.debug })
-        canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'black' })
     }
 
 }
