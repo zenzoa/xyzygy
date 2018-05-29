@@ -8,7 +8,6 @@ TO-DO
 
 STRETCH
 - edge randomness (maybe more likely as you get past galactic center)
-    - some aliens are randomly HUGE
     - some aliens are lone wanderers
     - some aliens glitch-phase in and out of existence
         - if you give them a gift, they drop something cool
@@ -27,7 +26,7 @@ STRETCH
     - parallax bg
 - gameplay
     - camera follows avatar instead of centering on it
-    - improve performance
+    - improve performance (might be caching code)
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
@@ -1191,9 +1190,17 @@ class Flock {
         planet.isHomeworld = true
         planet.growsGifts = false
 
+        let onOutskirts = square(sub(sector, [0, 0])) > 100 * 100 // far from galactic center?
+
         this.maxSpeed = randFloat(rng, 0.5, 4)
         this.maxForce = randFloat(rng, 0.1, 0.01)
-        this.r = 15
+
+        let size = rng()
+        let isHuge = onOutskirts && size < 0.01 // a few are HUGE
+        let isTiny = onOutskirts && size > 0.99 // a few are TINY
+        if (isHuge) this.r = randFloat(rng, 50, 100)
+        else if (isTiny) this.r = randFloat(rng, 2, 5)
+        else this.r = randFloat(rng, 10, 20)
 
         this.sightDist = randInt(rng, 50, 200)
         this.sightSquared = this.sightDist * this.sightDist
@@ -1213,7 +1220,7 @@ class Flock {
         this.bezPoint1 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
         this.bezPoint2 = scale(sub([rng(), rng()], [0.5, 0.5]), 2)
 
-        let numBoids = randInt(rng, 1, 20)
+        let numBoids = isHuge ? randInt(rng, 1, 10) : randInt(rng, 1, 20) // fewer boids if huge
         this.boids = []
         for(var i = 0; i < numBoids; i++) {
             this.boids.push(new Boid(i, this, sector, rng))
