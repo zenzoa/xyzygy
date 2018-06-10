@@ -4,7 +4,8 @@ TO-DO
 - pretty planets
     - indicate gift planets
     - indicate homeworlds
-- make avatar slower when clicking closer to it
+- bug: too easy to drop multiple gifts at once (maybe add separate button?)
+- remove caching
 
 STRETCH
 - edge randomness (maybe more likely as you get past galactic center)
@@ -12,6 +13,10 @@ STRETCH
     - some aliens glitch-phase in and out of existence
         - if you give them a gift, they drop something cool
 - behavior
+    - more variety of behaviors in general
+    - feeding aliens more makes them more friendly
+    - variety in movement types (like tadpoles, move in pulses)
+    - different plants grow, and aliens like different types of plants
     - aliens react to other flocks
     - communication
         - aliens talk at you
@@ -611,8 +616,11 @@ class Star {
         this.parentSector = parentSector
         this.sector = sector
 
-        this.pos = randVector(rng, SECTOR_SIZE)
         this.r = randInt(rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
+        this.pos = [
+            randInt(rng, this.r, SECTOR_SIZE - this.r),
+            randInt(rng, this.r, SECTOR_SIZE - this.r)
+        ]
 
         // give the star a bunch of orbiting planets, spaced out somewhat
         let numPlanets = randInt(rng, 0, MAX_PLANETS + 1)
@@ -753,7 +761,7 @@ class Planet {
         this.absPos = absPosition(this.sector, this.pos)
 
         // regrow gifts
-        if (this.growsGifts && galaxy.ticks > this.lastGiftPickup + this.giftRegenRate) {
+        if (!this.isHomeworld && this.growsGifts && galaxy.ticks > this.lastGiftPickup + this.giftRegenRate) {
             this.generateGift(galaxy)
         }
 
@@ -880,7 +888,7 @@ class Avatar {
     draw(canvas) {
         this.drawGifts(canvas)
 
-        let scale = this.r
+        let scale = this.r * 2
         if (Math.abs(this.vel[0]) > 0 || Math.abs(this.vel[1]) > 0) {
             this.angle = Math.atan2(this.vel[1], this.vel[0])
         }
@@ -1206,17 +1214,18 @@ class Flock {
         planet.isHomeworld = true
         planet.growsGifts = false
 
-        let onOutskirts = square(sub(sector, [0, 0])) > 100 * 100 // far from galactic center?
+        // let outerRim = square(sub(sector, [0, 0])) > 100 * 100
+        let isWeird = rng() < 0.01
+        let weirdness = isWeird ? randInt(rng, 0, 2) : -1
+        let isHuge = weirdness === 0
+        let isTiny = weirdness === 1
 
-        this.maxSpeed = randFloat(rng, 0.5, 4)
-        this.maxForce = randFloat(rng, 0.1, 0.01)
-
-        let size = rng()
-        let isHuge = onOutskirts && size < 0.01 // a few are HUGE
-        let isTiny = onOutskirts && size > 0.99 // a few are TINY
         if (isHuge) this.r = randFloat(rng, 50, 100)
         else if (isTiny) this.r = randFloat(rng, 2, 5)
         else this.r = randFloat(rng, 10, 20)
+
+        this.maxSpeed = randFloat(rng, 0.5, 4)
+        this.maxForce = randFloat(rng, 0.1, 0.01)
 
         this.sightDist = randInt(rng, 50, 200)
         this.sightSquared = this.sightDist * this.sightDist
@@ -1229,7 +1238,7 @@ class Flock {
         this.avatarForce = randFloat(rng, -1, 1)
         this.curiousRate = randFloat(rng, 0, 0.1)
 
-        this.giftForce = randFloat(rng, 0.1, 0.5)
+        this.giftForce = 1 //randFloat(rng, 0.1, 0.5)
         this.hasGift = false
         this.isFriend = false
 
