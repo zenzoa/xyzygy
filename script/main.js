@@ -4,8 +4,7 @@ TO-DO
 - pretty planets
     - indicate gift planets
     - indicate homeworlds
-- bug: too easy to drop multiple gifts at once (maybe add separate button?)
-- remove caching
+- bug: too easy to drop multiple gifts at once (maybe add separate button or delay between drops?)
 
 STRETCH
 - edge randomness (maybe more likely as you get past galactic center)
@@ -31,14 +30,13 @@ STRETCH
     - parallax bg
 - gameplay
     - camera follows avatar instead of centering on it
-    - improve performance (might be caching code)
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
 
 */
 
-let DEBUG = false
+let DEBUG = true
 let ZOOM = 1
 let FPS = 60
 let RANDOM_SEED = 42
@@ -82,9 +80,7 @@ let SECTOR = 0
 let POS = 1
 let RADIUS = 2
 
-let COLORS = {
-    'debug': 'hotpink'
-}
+let COLORS = { debug: 'hotpink' }
 
 let randFloat = (rng, min, max) => rng() * (max - min) + min
 let randInt = (rng, min, max) => Math.floor(rng() * (max - min) + min)
@@ -153,14 +149,13 @@ class Game {
         this.galaxy = new Galaxy()
 
         // start at a random sector
-        // this.currentSector = [0, 0]
-        this.currentSector = [
+        this.galaxy.changeSector([
             randInt(Math.random, -50, 50),
             randInt(Math.random, -50, 50)
-        ]
+        ])
 
         // create player avatar
-        this.avatar = new Avatar(this.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
+        this.avatar = new Avatar(this.galaxy.currentSector, [SECTOR_SIZE / 2, SECTOR_SIZE / 2])
         this.galaxy.avatar = this.avatar
 
         // initialize timer interval (used when starting the game timer)
@@ -230,8 +225,9 @@ class Game {
         if (this.avatar.pos[1] < 0) my = -1
         else if (this.avatar.pos[1] > SECTOR_SIZE) my = 1
         if (mx !== 0 || my !== 0) {
-            this.currentSector = add(this.currentSector, [mx, my])
-            this.avatar.sector = this.currentSector
+            let newSector = add(this.galaxy.currentSector, [mx, my])
+            this.galaxy.changeSector(newSector)
+            this.avatar.sector = newSector
             let posOffset = scale([mx, my], -SECTOR_SIZE)
             this.avatar.pos = add(this.avatar.pos, posOffset)
             this.avatar.target = add(this.avatar.target, posOffset)
@@ -244,12 +240,12 @@ class Game {
     update() {
         this.moveAvatar()
 
-        this.canvas.update(this.galaxy, this.currentSector)
+        this.canvas.update(this.galaxy)
 
         if (DEBUG) {
             this.canvas.context.font = '12px sans-serif'
             this.canvas.context.fillStyle = COLORS.debug
-            this.canvas.context.fillText(`${this.currentSector[0]}, ${this.currentSector[1]}`, SCREEN_SIZE / 2, 22)
+            this.canvas.context.fillText(`${this.galaxy.currentSector[0]}, ${this.galaxy.currentSector[1]}`, SCREEN_SIZE / 2, 22)
 
             this.canvas.context.font = '24px sans-serif'
             this.canvas.context.fillStyle = 'hotpink'
@@ -404,9 +400,9 @@ class Canvas {
         this.context.fillText('you ran out of fuel', halfScreen - 120, halfScreen)
     }
 
-    update(galaxy, currentSector) {
+    update(galaxy) {
         this.clear()
-        this.currentSector = currentSector
+        this.currentSector = galaxy.currentSector
 
         // draw background
         this.context.fillStyle = '#eee'
@@ -429,9 +425,9 @@ class Canvas {
 class Galaxy {
 
     constructor() {
-        this.sectorCache = {}
-        this.sectorCacheKeys = []
-        this.maxCache = 100
+        this.currentSector = []
+
+        this.sectors = []
         this.range = 2
 
         this.planetCache = {}
@@ -449,93 +445,67 @@ class Galaxy {
         this.ticks = 0
     }
 
-    getSector(coords, sectorsInRange) {
-        let key = stringifyCoords(coords)
-        if (!this.sectorCache[key]) this.cacheSector(coords, key, sectorsInRange)
-        return this.sectorCache[key]
+    changeSector(newSector) {
+        this.currentSector = newSector
+        this.getSectors()
     }
 
-    sectorsInRange(currentSector) {
-        let sectors = []
+    getSectors() {
+        this.sectors = []
         for (var x = -this.range; x <= this.range; x++) {
             for (var y = -this.range; y <= this.range; y++) {
-                sectors.push(add(currentSector, [x, y]))
+                let coords = add(this.currentSector, [x, y])
+                this.sectors.push(new Sector(this, coords))
             }
         }
-        return sectors
     }
 
-    cacheSector(coords, key, sectorsInRange) {
-        let sector = new Sector(this, coords)
-        this.sectorCache[key] = sector
-        this.sectorCacheKeys.push(key)
-        if (this.sectorCacheKeys.length > this.maxCache) this.uncacheSector(sectorsInRange)
-
-        // add flock to cache
-        if (sector.flock) {
-            if (this.friends[key]) sector.flock.makeFriend()
-            this.flockCache[key] = sector.flock
-            this.flockCacheKeys.push(key)
-            if (this.flockCacheKeys.length > this.maxFlockCache) this.uncacheFlocks(sectorsInRange)
-        }
+    cacheFlock(flock, key) {
+        if (this.friends[key]) flock.makeFriend()
+        this.flockCache[key] = flock
+        this.flockCacheKeys.push(key)
+        if (this.flockCacheKeys.length > this.maxFlockCache) this.cleanFlockCache()
     }
 
-    uncacheSector(sectorsInRange = []) {
-        let sectorsOutOfRange = this.sectorCacheKeys.filter(key => !sectorsInRange.includes(key))
-        if (sectorsOutOfRange.length === 0) return
-
-        let keyToRemove = sectorsOutOfRange[0]
-        this.sectorCache[keyToRemove] = undefined
-        this.sectorCacheKeys = this.sectorCacheKeys.slice(1)
-    }
-
-    uncacheFlocks(sectorsInRange = []) {
-        let range = SECTOR_SIZE * 0.5 * this.range
-        let squareRange = range * range
-        let absAvatarPos = absPosition(this.avatar.sector, this.avatar.pos)
-        let keysToRemove = []
-
+    cleanFlockCache() {
+        let newCacheKeys = []
         this.flockCacheKeys.forEach(key => {
-            if (sectorsInRange.includes(key)) return
-
             let flock = this.flockCache[key]
-            let boidsWithinRange = false
-
+            let boidsInSight = false
             flock.boids.forEach(boid => {
-                let absBoidPos = absPosition(boid.sector, boid.pos)
-                let diff = sub(absAvatarPos, absBoidPos)
-                if (square(diff) < squareRange) boidsWithinRange = true
+                let avatarPos = this.avatar.absPos
+                let boidPos = boid.absPos
+                let dx = Math.abs(avatarPos[0] - boidPos[0]) / SECTOR_SIZE
+                let dy = Math.abs(avatarPos[1] - boidPos[1]) / SECTOR_SIZE
+                if (dx < this.range + 1 || dy < this.range + 1) boidsInSight = true
             })
-
-            if (!boidsWithinRange) keysToRemove.push(key)
+            if (boidsInSight) newCacheKeys.push(key)
+            else delete this.flockCache[key]
         })
-
-        keysToRemove.forEach(keyToRemove => { this.flockCache[keyToRemove] = undefined })
-        this.flockCacheKeys = this.flockCacheKeys.filter(key => !keysToRemove.includes(key))
+        this.flockCacheKeys = newCacheKeys
     }
 
     update(canvas, galaxy) {
         this.ticks++
 
-        let sectorsInRange = this.sectorsInRange(canvas.currentSector)
-
-        this.obstacles = [
-            [this.avatar.sector, this.avatar.pos, this.avatar.r]
-        ]
+        this.obstacles = [[this.avatar.sector, this.avatar.pos, this.avatar.r]]
 
         let stars = []
         let planets = []
         let orbits = []
 
-        sectorsInRange.forEach(coords => {
+        this.sectors.forEach(sector => {
 
-            let sector = this.getSector(coords, sectorsInRange)
             sector.update(canvas)
+            let coords = sector.coords
+            let key = stringifyCoords(coords)
 
             if (sector.star) {
                 stars.push(sector.star)
 
                 this.obstacles.push([coords, sector.star.pos, sector.star.r])
+
+                if (sector.flock && !this.flockCache[key]) this.cacheFlock(sector.flock, key)
 
                 sector.star.planets.forEach(planet => {
                     planets.push(planet)
@@ -654,7 +624,7 @@ class Star {
     }
 
     update(canvas, galaxy) {
-        this.drawRays(canvas, galaxy)
+        // this.drawRays(canvas, galaxy)
         canvas.drawCircle(this.sector, this.pos, this.r, { fill: 'black' })
     }
 
@@ -692,16 +662,14 @@ class Planet {
         this.growsGifts = rng() <= GIFT_RATE
         this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
 
-        this.hasFuel = this.getCache(galaxy, 'hasFuel') || false
-        this.hasGift = this.getCache(galaxy, 'hasGift') || this.growsGifts
-        this.lastGiftPickup = this.getCache(galaxy, 'lastGiftPickup') || 0
-        this.isHomeworld = false
-    }
+        let key = stringifyPlanetCoords(this.sector, this.index)
+        let cache = galaxy.planetCache[key]
 
-    getCache(galaxy, key) {
-        let planetKey = stringifyPlanetCoords(this.sector, this.index)
-        if (!galaxy.planetCache[planetKey]) return undefined
-        else galaxy.planetCache[planetKey][key]
+        this.hasFuel = cache ? cache.hasFuel : false
+        this.hasGift = cache ? cache.hasGift : this.growsGifts
+        this.lastGiftPickup = cache ? cache.lastGiftPickup : 0
+
+        this.isHomeworld = false
     }
 
     setCache(galaxy, key, value) {
@@ -1285,7 +1253,7 @@ window.onload = () => {
 
     noise.seed(RANDOM_SEED)
 
-    let game = new Game()
-    game.start()
+    window.game = new Game()
+    window.game.start()
 
 }
