@@ -1,6 +1,7 @@
 /*
 
 TO-DO
+- rename to Xyzygy
 - pretty planets
     - indicate gift planets
     - indicate homeworlds
@@ -27,7 +28,6 @@ STRETCH
         - that planet then becomes a homeworld for a new batch of aliens
 - visuals
     - ship trails
-    - parallax bg
 - gameplay
     - camera follows avatar instead of centering on it
     - you can leave beacons to fast-travel back to that sector
@@ -133,6 +133,20 @@ let stringifyPlanetCoords = (coords, planetIndex) => {
     return `${coords[0]}, ${coords[1]}, ${planetIndex}`
 }
 
+let isOnScreen = (canvas, sector, pos, r) => {
+    let currentSector = canvas.currentSector
+    let cameraOffset = canvas.cameraOffset
+
+    let relSector = sub(sector, currentSector)
+    let relPos = add(scale(relSector, SECTOR_SIZE), pos)
+    let offsetPos = add(relPos, cameraOffset)
+
+    return (
+        offsetPos[0] + r >= 0 && offsetPos[0] - r <= SCREEN_SIZE &&
+        offsetPos[1] + r >= 0 && offsetPos[1] - r <= SCREEN_SIZE
+    )
+}
+
 class Game {
 
     constructor(canvas, avatar) {
@@ -233,6 +247,9 @@ class Game {
 
         // center camera on avatar
         this.canvas.cameraOffset = sub(this.canvas.screenCenter, this.avatar.pos)
+        this.canvas.starscape1.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
+        this.canvas.starscape2.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
+        this.canvas.starscape3.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
     }
 
     update() {
@@ -282,6 +299,10 @@ class Canvas {
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2,
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2
         ]
+
+        this.starscape1 = new Starscape(1, 40)
+        this.starscape2 = new Starscape(2, 20)
+        this.starscape3 = new Starscape(4, 10)
     }
 
     get screenCenter() {
@@ -356,6 +377,17 @@ class Canvas {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
+    drawStarscape() {
+        this.context.fillStyle = '#ccc'
+        this.starscape1.draw(this.context)
+
+        this.context.fillStyle = '#999'
+        this.starscape2.draw(this.context)
+
+        this.context.fillStyle = '#666'
+        this.starscape3.draw(this.context)
+    }
+
     drawFuel(galaxy) {
         let fuel = galaxy.avatar.fuel
 
@@ -395,6 +427,9 @@ class Canvas {
         this.context.fillStyle = '#eee'
         this.context.fillRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
 
+        // draw starscape
+        this.drawStarscape()
+
         this.context.save()
         // this.context.scale(ZOOM, ZOOM)
 
@@ -407,6 +442,62 @@ class Canvas {
         this.drawFuel(galaxy)
     }
 
+}
+
+class Starscape {
+    constructor(scale, offsetScale, width, gridSize) {
+        this.scale = scale
+        this.offsetScale = offsetScale
+        this.width = width || 20
+        this.gridSize = gridSize || 10
+        this.offsetx = 0
+        this.offsety = 0
+        this.tileSize = width * gridSize * scale
+        this.halfTile = this.tileSize / 2
+
+        this.starsX = []
+        this.starsY = []
+        for (var x = 0; x < this.width; x++) {
+            for (var y = 0; y < this.width; y++) {
+                let isStar = Math.abs(noise.simplex2(x, y)) < 0.1
+                if (isStar) {
+                    let posx = (x + Math.random()) * this.gridSize
+                    let posy = (y + Math.random()) * this.gridSize
+
+                    this.starsX.push(posx)
+                    this.starsY.push(posy)
+
+                    this.starsX.push(posx - this.gridSize * this.width)
+                    this.starsY.push(posy)
+
+                    this.starsX.push(posx)
+                    this.starsY.push(posy - this.gridSize * this.width)
+
+                    this.starsX.push(posx - this.gridSize * this.width)
+                    this.starsY.push(posy - this.gridSize * this.width)
+                }
+            }
+        }
+
+        this.numStars = this.starsX.length
+    }
+
+    updateOffset(x, y) {
+        this.offsetx -= x / this.offsetScale
+        this.offsety -= y / this.offsetScale
+        if (this.offsetx < -this.halfTile) this.offsetx += this.tileSize
+        if (this.offsetx > this.halfTile) this.offsetx -= this.tileSize
+        if (this.offsety < -this.halfTile) this.offsety += this.tileSize
+        if (this.offsety > this.halfTile) this.offsety -= this.tileSize
+    }
+
+    draw(context) {
+        for (var i = 0; i < this.numStars; i++) {
+            let x = (this.starsX[i] * this.scale) + this.offsetx + SCREEN_SIZE / 2
+            let y = (this.starsY[i] * this.scale) + this.offsety + SCREEN_SIZE / 2
+            context.fillRect(x, y, 1, 1)
+        }
+    }
 }
 
 class Galaxy {
@@ -439,6 +530,38 @@ class Galaxy {
 
     getSectors() {
         this.sectors = []
+
+        // let secx = this.currentSector[0]
+        // let secy = this.currentSector[1]
+
+        // this.sectors.push(new Sector(this, [secx, secy]))
+        // this.sectors.push(new Sector(this, [secx, secy + 1]))
+        // this.sectors.push(new Sector(this, [secx, secy - 1]))
+
+        // this.sectors.push(new Sector(this, [secx + 1, secy]))
+        // this.sectors.push(new Sector(this, [secx + 1, secy + 1]))
+        // this.sectors.push(new Sector(this, [secx + 1, secy - 1]))
+
+        // this.sectors.push(new Sector(this, [secx - 1, secy]))
+        // this.sectors.push(new Sector(this, [secx - 1, secy + 1]))
+        // this.sectors.push(new Sector(this, [secx - 1, secy - 1]))
+
+        // this.sectors.push(new Sector(this, [secx + 2, secy]))
+        // this.sectors.push(new Sector(this, [secx + 2, secy + 1]))
+        // this.sectors.push(new Sector(this, [secx + 2, secy - 1]))
+
+        // this.sectors.push(new Sector(this, [secx - 2, secy]))
+        // this.sectors.push(new Sector(this, [secx - 2, secy + 1]))
+        // this.sectors.push(new Sector(this, [secx - 2, secy - 1]))
+
+        // this.sectors.push(new Sector(this, [secx, secy + 2]))
+        // this.sectors.push(new Sector(this, [secx + 1, secy + 2]))
+        // this.sectors.push(new Sector(this, [secx - 1, secy + 2]))
+
+        // this.sectors.push(new Sector(this, [secx, secy - 2]))
+        // this.sectors.push(new Sector(this, [secx + 1, secy - 2]))
+        // this.sectors.push(new Sector(this, [secx - 1, secy - 2]))
+
         for (var x = -this.range; x <= this.range; x++) {
             for (var y = -this.range; y <= this.range; y++) {
                 let coords = add(this.currentSector, [x, y])
@@ -560,7 +683,7 @@ class Sector {
 
         // some sectors have star systems
         let hasStar = Math.abs(noise.simplex2(coords[0], coords[1])) <= SYSTEM_RATE
-        if (hasStar) this.star = new Star(galaxy, this, this.coords, this.rng)
+        if (hasStar) this.star = new Star(galaxy, this.coords, this.rng)
 
         // some sectors have aliens
         if (hasStar && this.star.planets.length > 0) {
@@ -581,8 +704,7 @@ class Sector {
 
 class Star {
 
-    constructor(galaxy, parentSector, sector, rng) {
-        this.parentSector = parentSector
+    constructor(galaxy, sector, rng) {
         this.sector = sector
 
         this.r = randInt(rng, MIN_STAR_RADIUS, MAX_STAR_RADIUS)
@@ -622,6 +744,7 @@ class Star {
     }
 
     update(canvas, galaxy) {
+        if (!isOnScreen(canvas, this.sector, this.pos, this.r * 1.2)) return
         this.drawRays(canvas, galaxy)
         canvas.drawCircle(this.sector, this.pos, this.r, true)
     }
@@ -717,6 +840,8 @@ class Planet {
     }
 
     update(canvas, galaxy) {
+        if (!isOnScreen(canvas, this.sector, this.pos, this.r + GIFT_DISTANCE + GIFT_RADIUS)) return
+
         // move the planet along its orbital path
         let ticksPerRotation = (PI * 2) / this.speed
         let remainderTicks = galaxy.ticks % ticksPerRotation
@@ -1135,6 +1260,7 @@ class Boid {
     }
 
     draw(canvas) {
+        if (!isOnScreen(canvas, this.sector, this.pos, this.flock.r * 2)) return
         // if (DEBUG && this.flock.isFriend) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
         // if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
         // if (DEBUG && this.isCurious) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: 'hotpink' })
