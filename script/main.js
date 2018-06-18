@@ -162,8 +162,8 @@ class Game {
 
         // start at a random sector
         this.galaxy.changeSector([
-            randInt(Math.random, -50, 50),
-            randInt(Math.random, -50, 50)
+            0, //randInt(Math.random, -50, 50),
+            0 //randInt(Math.random, -50, 50)
         ])
 
         // create player avatar
@@ -247,9 +247,9 @@ class Game {
 
         // center camera on avatar
         this.canvas.cameraOffset = sub(this.canvas.screenCenter, this.avatar.pos)
-        this.canvas.starscape1.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
-        this.canvas.starscape2.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
-        this.canvas.starscape3.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
+        this.canvas.starfield1.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
+        this.canvas.starfield2.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
+        this.canvas.starfield3.updateOffset(this.avatar.vel[0], this.avatar.vel[1])
     }
 
     update() {
@@ -300,9 +300,9 @@ class Canvas {
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2
         ]
 
-        this.starscape1 = new Starscape(1, 40)
-        this.starscape2 = new Starscape(2, 20)
-        this.starscape3 = new Starscape(4, 10)
+        this.starfield1 = new Starfield(1, 40)
+        this.starfield2 = new Starfield(2, 20)
+        this.starfield3 = new Starfield(4, 10)
     }
 
     get screenCenter() {
@@ -377,15 +377,15 @@ class Canvas {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
-    drawStarscape() {
+    drawStarfields() {
         this.context.fillStyle = '#ccc'
-        this.starscape1.draw(this.context)
+        this.starfield1.draw(this.context)
 
         this.context.fillStyle = '#999'
-        this.starscape2.draw(this.context)
+        this.starfield2.draw(this.context)
 
         this.context.fillStyle = '#666'
-        this.starscape3.draw(this.context)
+        this.starfield3.draw(this.context)
     }
 
     drawFuel(galaxy) {
@@ -427,11 +427,11 @@ class Canvas {
         this.context.fillStyle = '#eee'
         this.context.fillRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
 
-        // draw starscape
-        this.drawStarscape()
+        // draw starfields
+        this.drawStarfields()
 
         this.context.save()
-        // this.context.scale(ZOOM, ZOOM)
+        if (ZOOM !== 1) this.context.scale(ZOOM, ZOOM)
 
         // update and draw galaxy
         galaxy.update(this)
@@ -444,7 +444,8 @@ class Canvas {
 
 }
 
-class Starscape {
+class Starfield {
+
     constructor(scale, offsetScale, width, gridSize) {
         this.scale = scale
         this.offsetScale = offsetScale
@@ -452,8 +453,7 @@ class Starscape {
         this.gridSize = gridSize || 10
         this.offsetx = 0
         this.offsety = 0
-        this.tileSize = width * gridSize * scale
-        this.halfTile = this.tileSize / 2
+        this.tileSize = this.width * this.gridSize * this.scale
 
         this.starsX = []
         this.starsY = []
@@ -485,10 +485,10 @@ class Starscape {
     updateOffset(x, y) {
         this.offsetx -= x / this.offsetScale
         this.offsety -= y / this.offsetScale
-        if (this.offsetx < -this.halfTile) this.offsetx += this.tileSize
-        if (this.offsetx > this.halfTile) this.offsetx -= this.tileSize
-        if (this.offsety < -this.halfTile) this.offsety += this.tileSize
-        if (this.offsety > this.halfTile) this.offsety -= this.tileSize
+        if (this.offsetx > this.tileSize / 2) this.offsetx -= this.tileSize
+        else if (this.offsetx < -this.tileSize / 2) this.offsetx += this.tileSize
+        if (this.offsety > this.tileSize / 2) this.offsety -= this.tileSize
+        else if (this.offsety < -this.tileSize / 2) this.offsety += this.tileSize
     }
 
     draw(context) {
@@ -506,7 +506,7 @@ class Galaxy {
         this.currentSector = []
 
         this.sectors = []
-        this.range = 1
+        this.range = 2
 
         this.planetCache = {}
 
@@ -530,37 +530,6 @@ class Galaxy {
 
     getSectors() {
         this.sectors = []
-
-        // let secx = this.currentSector[0]
-        // let secy = this.currentSector[1]
-
-        // this.sectors.push(new Sector(this, [secx, secy]))
-        // this.sectors.push(new Sector(this, [secx, secy + 1]))
-        // this.sectors.push(new Sector(this, [secx, secy - 1]))
-
-        // this.sectors.push(new Sector(this, [secx + 1, secy]))
-        // this.sectors.push(new Sector(this, [secx + 1, secy + 1]))
-        // this.sectors.push(new Sector(this, [secx + 1, secy - 1]))
-
-        // this.sectors.push(new Sector(this, [secx - 1, secy]))
-        // this.sectors.push(new Sector(this, [secx - 1, secy + 1]))
-        // this.sectors.push(new Sector(this, [secx - 1, secy - 1]))
-
-        // this.sectors.push(new Sector(this, [secx + 2, secy]))
-        // this.sectors.push(new Sector(this, [secx + 2, secy + 1]))
-        // this.sectors.push(new Sector(this, [secx + 2, secy - 1]))
-
-        // this.sectors.push(new Sector(this, [secx - 2, secy]))
-        // this.sectors.push(new Sector(this, [secx - 2, secy + 1]))
-        // this.sectors.push(new Sector(this, [secx - 2, secy - 1]))
-
-        // this.sectors.push(new Sector(this, [secx, secy + 2]))
-        // this.sectors.push(new Sector(this, [secx + 1, secy + 2]))
-        // this.sectors.push(new Sector(this, [secx - 1, secy + 2]))
-
-        // this.sectors.push(new Sector(this, [secx, secy - 2]))
-        // this.sectors.push(new Sector(this, [secx + 1, secy - 2]))
-        // this.sectors.push(new Sector(this, [secx - 1, secy - 2]))
 
         for (var x = -this.range; x <= this.range; x++) {
             for (var y = -this.range; y <= this.range; y++) {
@@ -595,7 +564,7 @@ class Galaxy {
         this.flockCacheKeys = newCacheKeys
     }
 
-    update(canvas, galaxy) {
+    update(canvas) {
         this.ticks++
 
         this.obstacles = [[this.avatar.sector, this.avatar.pos, this.avatar.r]]
@@ -604,9 +573,9 @@ class Galaxy {
         let planets = []
         let orbits = []
 
+        // update things
         this.sectors.forEach(sector => {
 
-            sector.update(canvas)
             let coords = sector.coords
             let key = stringifyCoords(coords)
 
@@ -648,24 +617,25 @@ class Galaxy {
 
         let flocks = this.flockCacheKeys.map(key => this.flockCache[key])
 
+        // draw things
         canvas.context.strokeStyle = 'black'
         canvas.context.lineWidth = 1
         canvas.context.fillStyle = 'black'
-        stars.forEach(star => star.update(canvas, this))
-        this.gifts.forEach(gift => Gift.update(gift, canvas, this))
+        stars.forEach(star => star.draw(canvas, this))
+        this.gifts.forEach(gift => Gift.draw(gift, canvas, this))
 
         canvas.context.fillStyle = 'white'
         canvas.context.lineWidth = 0.1
-        orbits.forEach(orbit => orbit.update(canvas, this))
+        orbits.forEach(orbit => orbit.draw(canvas, this))
 
         canvas.context.lineWidth = 2
-        planets.forEach(planet => planet.update(canvas, this))
+        planets.forEach(planet => planet.draw(canvas, this))
 
         canvas.context.lineWidth = 1
-        flocks.forEach(flock => flock.update(canvas, this))
+        flocks.forEach(flock => flock.draw(canvas, this))
 
         canvas.context.fillStyle = 'black'
-        this.avatar.update(canvas, this)
+        this.avatar.draw(canvas, this)
 
     }
 
@@ -675,6 +645,7 @@ class Sector {
 
     constructor(galaxy, coords) {
         this.coords = coords
+        let key = stringifyCoords(coords)
 
         // create a random seed based on the sector's coordinates -
         // this way the sector remains consistent even when offscreen,
@@ -686,7 +657,11 @@ class Sector {
         if (hasStar) this.star = new Star(galaxy, this.coords, this.rng)
 
         // some sectors have aliens
-        if (hasStar && this.star.planets.length > 0) {
+        if (galaxy.flockCache[key]) {
+            this.flock = galaxy.flockCache[key]
+            this.star.planets[this.flock.planet.index] = this.flock.planet
+        }
+        else if (hasStar && this.star.planets.length > 0) {
             let hasFlock = this.rng() <= ALIEN_RATE
             if (hasFlock) {
                 let homeworldIndex = randInt(this.rng, 0, this.star.planets.length)
@@ -696,7 +671,7 @@ class Sector {
         }
     }
 
-    update(canvas) {
+    draw(canvas) {
         if (DEBUG) canvas.drawRect(this.coords, [0, 0], SECTOR_SIZE, SECTOR_SIZE, false)
     }
 
@@ -743,7 +718,7 @@ class Star {
         }
     }
 
-    update(canvas, galaxy) {
+    draw(canvas, galaxy) {
         if (!isOnScreen(canvas, this.sector, this.pos, this.r * 1.2)) return
         this.drawRays(canvas, galaxy)
         canvas.drawCircle(this.sector, this.pos, this.r, true)
@@ -759,7 +734,7 @@ class Orbit {
         this.r = r
     }
 
-    update(canvas) {
+    draw(canvas) {
         canvas.drawCircle(this.sector, this.pos, this.r, false)
     }
 
@@ -775,20 +750,11 @@ class Planet {
 
         this.r = r
         this.startAngle = randFloat(rng, 0, PI * 2)
-        this.angle = this.startAngle
         this.speed = randFloat(rng, MIN_PLANET_SPEED, MAX_PLANET_SPEED)
-        this.pos = this.calcPos()
-        this.absPos = absPosition(this.sector, this.pos)
+        this.calcPos(galaxy)
 
         this.growsGifts = rng() <= GIFT_RATE
         this.giftRegenRate = randInt(rng, MIN_GIFT_REGEN, MAX_GIFT_REGEN)
-
-        let key = stringifyPlanetCoords(this.sector, this.index)
-        let cache = galaxy.planetCache[key]
-
-        this.hasFuel = cache ? cache.hasFuel : false
-        this.hasGift = cache ? cache.hasGift : this.growsGifts
-        this.lastGiftPickup = cache ? cache.lastGiftPickup : 0
 
         this.isHomeworld = false
     }
@@ -797,7 +763,6 @@ class Planet {
         let planetKey = stringifyPlanetCoords(this.sector, this.index)
         if (!galaxy.planetCache[planetKey]) galaxy.planetCache[planetKey] = {}
         galaxy.planetCache[planetKey][key] = value
-        this[key] = value
     }
 
     generateFuel(galaxy) {
@@ -817,11 +782,19 @@ class Planet {
         this.setCache(galaxy, 'lastGiftPickup', galaxy.ticks)
     }
 
-    calcPos() {
+    calcPos(galaxy) {
+        let ticksPerRotation = (PI * 2) / this.speed
+        let remainderTicks = galaxy.ticks % ticksPerRotation
+        let rotationPortion = remainderTicks / ticksPerRotation
+        this.angle = this.startAngle + (rotationPortion * PI * 2)
+        if (this.angle > PI * 2) this.angle -= PI * 2
+
         let unitVector = [Math.cos(this.angle), Math.sin(this.angle)]
         let scaledVector = scale(unitVector, this.orbit.r)
         let orbitalPosition = add(scaledVector, this.orbit.pos)
-        return orbitalPosition
+
+        this.pos = orbitalPosition
+        this.absPos = absPosition(this.sector, this.pos)
     }
 
     drawGift(canvas, galaxy) {
@@ -839,17 +812,25 @@ class Planet {
         canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
     }
 
-    update(canvas, galaxy) {
-        if (!isOnScreen(canvas, this.sector, this.pos, this.r + GIFT_DISTANCE + GIFT_RADIUS)) return
-
+    update(galaxy) {
         // move the planet along its orbital path
-        let ticksPerRotation = (PI * 2) / this.speed
-        let remainderTicks = galaxy.ticks % ticksPerRotation
-        let rotationPortion = remainderTicks / ticksPerRotation
-        this.angle = this.startAngle + (rotationPortion * PI * 2)
-        if (this.angle > PI * 2) this.angle -= PI * 2
-        this.pos = this.calcPos()
-        this.absPos = absPosition(this.sector, this.pos)
+        this.calcPos(galaxy)
+
+        // get cache
+        let key = stringifyPlanetCoords(this.sector, this.index)
+        let cache = galaxy.planetCache[key]
+
+        // get cache values
+        this.hasFuel = cache ? cache.hasFuel : false
+        this.hasGift = cache ? cache.hasGift : this.growsGifts
+        this.lastGiftPickup = cache ? cache.lastGiftPickup : 0
+    }
+
+    draw(canvas, galaxy) {
+        this.update(galaxy)
+
+        // don't update if not on screen
+        if (!isOnScreen(canvas, this.sector, this.pos, this.r + GIFT_DISTANCE + GIFT_RADIUS)) return
 
         // regrow gifts
         if (!this.isHomeworld && this.growsGifts && galaxy.ticks > this.lastGiftPickup + this.giftRegenRate) {
@@ -950,12 +931,11 @@ class Avatar {
         this.absPos = absPosition(this.sector, this.pos)
     }
 
-    update(canvas, galaxy) {
+    update(galaxy) {
         this.seekMouse(galaxy)
         this.avoidObstacles(galaxy)
 
         this.updatePos()
-        this.draw(canvas)
     }
 
     drawGifts(canvas) {
@@ -976,7 +956,9 @@ class Avatar {
         }
     }
 
-    draw(canvas) {
+    draw(canvas, galaxy) {
+        this.update(galaxy)
+
         this.drawGifts(canvas)
 
         let offset = canvas.offset(this.sector)
@@ -1076,6 +1058,8 @@ class Boid {
             if (square(diff) < this.sightSquared) {
                 let giftPos = absPosition(gift[SECTOR], gift[POS])
                 let giftForce = this.arrive(giftPos, this.sightDist)
+                giftForce = scale(giftForce, this.flock.giftForce)
+                if (this.isCurious) giftForce = scale(giftForce, 2)
                 this.applyForce(giftForce)
             }
 
@@ -1205,7 +1189,7 @@ class Boid {
         let diff = sub(avatar.absPos, this.absPos)
 
         let avatarForce = this.flock.avatarForce
-        if (this.isCurious || this.flock.isFriend) avatarForce = avatarForce > 0 ? avatarForce * 1.5 : avatarForce * -1
+        if (this.isCurious || this.flock.isFriend) avatarForce = Math.abs(avatarForce)
         if (this.hasGift) avatarForce *= 0.1
 
         if (square(diff) < this.sightSquared) {
@@ -1234,10 +1218,10 @@ class Boid {
         this.vel = limit(this.vel, this.flock.maxSpeed)
         this.pos = add(this.pos, this.vel)
         this.absPos = absPosition(this.sector, this.pos)
-        this.acc = [0, 0]
+        this.acc = scale(this.acc, this.flock.friction)
     }
 
-    update(canvas, galaxy) {
+    update(galaxy) {
         this.flocking()
         this.avoidObstacles(galaxy)
         this.handleGifts(galaxy)
@@ -1246,7 +1230,6 @@ class Boid {
         this.wanderRandomly()
 
         this.updatePos()
-        this.draw(canvas)
     }
 
     drawGift(canvas, angle) {
@@ -1259,11 +1242,10 @@ class Boid {
         canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
     }
 
-    draw(canvas) {
+    draw(canvas, galaxy) {
+        this.update(galaxy)
+
         if (!isOnScreen(canvas, this.sector, this.pos, this.flock.r * 2)) return
-        // if (DEBUG && this.flock.isFriend) canvas.drawCircle(this.sector, this.pos, this.flock.r + 2, { stroke: COLORS.debug })
-        // if (DEBUG) canvas.drawCircle(this.sector, this.pos, this.sightDist, { stroke: COLORS.debug })
-        // if (DEBUG && this.isCurious) canvas.drawCircle(this.sector, this.pos, this.flock.r, { stroke: 'hotpink' })
 
         let offset = canvas.offset(this.sector)
         let x = offset[0] + this.pos[0]
@@ -1317,21 +1299,23 @@ class Flock {
         else if (isTiny) this.r = randFloat(rng, 2, 5)
         else this.r = randFloat(rng, 10, 20)
 
-        this.maxSpeed = randFloat(rng, 0.5, 4)
-        this.maxForce = randFloat(rng, 0.1, 0.01)
+        this.maxSpeed = randFloat(rng, 0.1, 3)
+        this.maxForce = randFloat(rng, 0.05, 0.1)
 
         this.sightDist = randInt(rng, 50, 200)
         this.sightSquared = this.sightDist * this.sightDist
 
-        this.aliForce = randFloat(rng, 0.1, 1.0)
-        this.cohForce = randFloat(rng, 0.1, 1.0)
+        this.aliForce = randFloat(rng, 0, 1.0)
+        this.cohForce = randFloat(rng, 0, 1.0)
         this.sepForce = -2.0
 
         this.exploreForce = randFloat(rng, 1, 10)
         this.avatarForce = randFloat(rng, -1, 1)
         this.curiousRate = randFloat(rng, 0, 0.1)
 
-        this.giftForce = 1 //randFloat(rng, 0.1, 0.5)
+        this.friction = randFloat(rng, 0, 0.5)
+
+        this.giftForce = 1
         this.hasGift = false
         this.isFriend = false
 
@@ -1343,34 +1327,6 @@ class Flock {
         for(var i = 0; i < numBoids; i++) {
             this.boids.push(new Boid(i, this, sector, rng))
         }
-    }
-
-    drawTempCanvas() {
-        let ctx = this.tempContext
-        let bez1 = this.bezPoint1
-        let bez2 = this.bezPoint2
-        let scale = this.r * 1.5
-
-        ctx.beginPath()
-        ctx.save()
-        ctx.translate(this.r * 2, this.r * 2)
-        ctx.scale(scale, scale)
-        ctx.moveTo(-0.5, 0)
-        ctx.bezierCurveTo(
-            bez1[0], -bez1[1],
-            bez2[0], -bez2[1],
-            0.5, 0)
-        ctx.bezierCurveTo(
-            bez2[0], bez2[1],
-            bez1[0], bez1[1],
-            -0.5, 0)
-        ctx.restore()
-
-        ctx.fillStyle = 'white'
-        ctx.fill()
-        ctx.lineWidth = 1
-        ctx.strokeStyle = 'black'
-        ctx.stroke()
     }
 
     pickUpGift() {
@@ -1388,15 +1344,15 @@ class Flock {
         this.isFriend = true
     }
 
-    update(canvas, galaxy) {
-        this.boids.forEach(boid => boid.update(canvas, galaxy))
+    draw(canvas, galaxy) {
+        this.boids.forEach(boid => boid.draw(canvas, galaxy))
     }
 
 }
 
 class Gift {
 
-    static update(gift, canvas, galaxy) {
+    static draw(gift, canvas, galaxy) {
         canvas.drawCircle(gift[SECTOR], gift[POS], gift[RADIUS], true)
     }
 
