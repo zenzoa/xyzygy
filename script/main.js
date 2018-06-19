@@ -8,10 +8,6 @@ TO-DO
 - bug: too easy to drop multiple gifts at once (maybe add separate button or delay between drops?)
 
 STRETCH
-- edge randomness (maybe more likely as you get past galactic center)
-    - some aliens are lone wanderers
-    - some aliens glitch-phase in and out of existence
-        - if you give them a gift, they drop something cool
 - behavior
     - more variety of behaviors in general
     - feeding aliens more makes them more friendly
@@ -26,6 +22,9 @@ STRETCH
         - when you give an alien a gift, they have the ability to colonize an empty planet
             - maybe one (random) alien becomes a 'queen' and explores nearby planets
         - that planet then becomes a homeworld for a new batch of aliens
+    - some aliens are lone wanderers
+    - some aliens glitch-phase in and out of existence
+        - if you give them a gift, they drop something cool
 - visuals
     - ship trails
 - gameplay
@@ -33,10 +32,11 @@ STRETCH
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
+    - your ship has momentum
 
 */
 
-let DEBUG = false
+let DEBUG = true
 let ZOOM = 1
 let FPS = 60
 let RANDOM_SEED = 42
@@ -410,6 +410,28 @@ class Canvas {
         if (fuel <= 0) this.drawEndScreen()
     }
 
+    drawTrails(flocks) {
+        let boidTrails = []
+        flocks.forEach(flock => {
+            flock.boids.forEach(boid => {
+                if (!isOnScreen(this, boid.sector, boid.pos, flock.r * 10)) return
+                boidTrails.push({
+                    sector: boid.sector,
+                    segments: boid.trailSegments.concat(boid.backPos)
+                })
+            })
+        })
+
+        for(var i = 0; i <= 20; i++) {
+            this.context.lineWidth = Math.min(0.1, Math.max(0.01, i * 0.05))
+            boidTrails.forEach(trail => {
+                let seg1 = trail.segments[i]
+                let seg2 = trail.segments[i+1]
+                if (seg1 && seg2) this.drawLine(trail.sector, seg1, trail.sector, seg2)
+            })
+        }
+    }
+
     drawEndScreen() {
         let halfScreen = SCREEN_SIZE / 2
         this.drawCircle(null, [halfScreen, halfScreen], halfScreen, true)
@@ -630,6 +652,8 @@ class Galaxy {
 
         canvas.context.lineWidth = 2
         planets.forEach(planet => planet.draw(canvas, this))
+
+        canvas.drawTrails(flocks)
 
         canvas.context.lineWidth = 1
         flocks.forEach(flock => flock.draw(canvas, this))
@@ -1003,12 +1027,18 @@ class Boid {
         this.vel = [0, 0]
         this.acc = [0, 0]
         this.angle = 0
+        this.backPos = this.pos.slice()
 
         this.isCurious = rng() <= flock.curiousRate
         this.hasGift = false
 
         this.sightDist = this.isCurious ? flock.sightDist * 2 : flock.sightDist
         this.sightSquared = this.sightDist * this.sightDist
+
+        this.trailSegments = []
+        this.trailLength = this.flock.trailLength
+        this.trailTime = 5
+        this.trailTicks = 0
     }
 
     applyForce(force) {
@@ -1219,6 +1249,16 @@ class Boid {
         this.pos = add(this.pos, this.vel)
         this.absPos = absPosition(this.sector, this.pos)
         this.acc = scale(this.acc, this.flock.friction)
+        this.backPos = sub(this.pos, [Math.cos(this.angle) * this.flock.r * 0.75, Math.sin(this.angle) * this.flock.r * 0.75])
+    }
+
+    updateTrail() {
+        this.trailTicks++
+        if (this.trailTicks >= this.trailTime) {
+            this.trailTicks = 0
+            this.trailSegments.push(this.backPos)
+            if (this.trailSegments.length > this.trailLength) this.trailSegments.shift()
+        }
     }
 
     update(galaxy) {
@@ -1230,6 +1270,8 @@ class Boid {
         this.wanderRandomly()
 
         this.updatePos()
+
+        this.updateTrail()
     }
 
     drawGift(canvas, angle) {
@@ -1242,9 +1284,15 @@ class Boid {
         canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
     }
 
+    // drawTrail(canvas) {
+    //     this.trailSegments.forEach((segment, i) => {
+    //         let nextSegment = this.trailSegments[i + 1] || this.pos
+    //         canvas.drawLine(this.sector, segment, this.sector, nextSegment)
+    //     })
+    // }
+
     draw(canvas, galaxy) {
         this.update(galaxy)
-
         if (!isOnScreen(canvas, this.sector, this.pos, this.flock.r * 2)) return
 
         let offset = canvas.offset(this.sector)
@@ -1314,6 +1362,8 @@ class Flock {
         this.curiousRate = randFloat(rng, 0, 0.1)
 
         this.friction = randFloat(rng, 0, 0.5)
+
+        this.trailLength = 10 //randInt(rng, 0, 20)
 
         this.giftForce = 1
         this.hasGift = false
