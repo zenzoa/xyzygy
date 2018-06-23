@@ -1,13 +1,9 @@
 /*
 
-TO-DO
-- rename to Xyzygy
-- pretty planets
-    - indicate gift planets
-    - indicate homeworlds
+TO-DO:
 - bug: too easy to drop multiple gifts at once (maybe add separate button or delay between drops?)
 
-STRETCH
+STRETCH GOALS:
 - behavior
     - more variety of behaviors in general
     - feeding aliens more makes them more friendly
@@ -26,7 +22,6 @@ STRETCH
     - some aliens glitch-phase in and out of existence
         - if you give them a gift, they drop something cool
 - gameplay
-    - camera follows avatar instead of centering on it
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
@@ -163,8 +158,8 @@ class Game {
 
         // start at a random sector
         this.galaxy.changeSector([
-            0, //randInt(Math.random, -50, 50),
-            0 //randInt(Math.random, -50, 50)
+            randInt(Math.random, -50, 50),
+            randInt(Math.random, -50, 50)
         ])
 
         // create player avatar
@@ -309,9 +304,9 @@ class Canvas {
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2
         ]
 
-        this.starfield1 = new Starfield(1, 40)
-        this.starfield2 = new Starfield(2, 20)
-        this.starfield3 = new Starfield(4, 10)
+        this.starfield1 = new Starfield(1, 4)
+        this.starfield2 = new Starfield(2, 2)
+        this.starfield3 = new Starfield(4, 1)
     }
 
     get screenCenter() {
@@ -386,14 +381,14 @@ class Canvas {
         this.context.clearRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
     }
 
-    drawStarfields() {
-        this.context.fillStyle = '#ccc'
+    drawStarfields(galaxy) {
+        this.context.fillStyle = this.starfield1.getColor(galaxy, 600, 200, 225)
         this.starfield1.draw(this.context)
 
-        this.context.fillStyle = '#999'
+        this.context.fillStyle = this.starfield2.getColor(galaxy, 500, 175, 200)
         this.starfield2.draw(this.context)
 
-        this.context.fillStyle = '#666'
+        this.context.fillStyle = this.starfield3.getColor(galaxy, 400, 150, 175)
         this.starfield3.draw(this.context)
     }
 
@@ -459,7 +454,7 @@ class Canvas {
         this.context.fillRect(0, 0, SCREEN_SIZE, SCREEN_SIZE)
 
         // draw starfields
-        this.drawStarfields()
+        this.drawStarfields(galaxy)
 
         this.context.save()
         if (ZOOM !== 1) this.context.scale(ZOOM, ZOOM)
@@ -480,7 +475,7 @@ class Starfield {
     constructor(scale, offsetScale, width, gridSize) {
         this.scale = scale
         this.offsetScale = offsetScale
-        this.width = width || 20
+        this.width = (width || 1) * (SCREEN_SIZE / 10)
         this.gridSize = gridSize || 10
         this.offsetx = 0
         this.offsety = 0
@@ -492,20 +487,20 @@ class Starfield {
             for (var y = 0; y < this.width; y++) {
                 let isStar = Math.abs(noise.simplex2(x, y)) < 0.1
                 if (isStar) {
-                    let posx = (x + Math.random()) * this.gridSize
-                    let posy = (y + Math.random()) * this.gridSize
+                    let posx = (x + Math.random()) * this.gridSize * this.scale
+                    let posy = (y + Math.random()) * this.gridSize * this.scale
 
                     this.starsX.push(posx)
                     this.starsY.push(posy)
 
-                    this.starsX.push(posx - this.gridSize * this.width)
+                    this.starsX.push(posx - this.tileSize)
                     this.starsY.push(posy)
 
                     this.starsX.push(posx)
-                    this.starsY.push(posy - this.gridSize * this.width)
+                    this.starsY.push(posy - this.tileSize)
 
-                    this.starsX.push(posx - this.gridSize * this.width)
-                    this.starsY.push(posy - this.gridSize * this.width)
+                    this.starsX.push(posx - this.tileSize)
+                    this.starsY.push(posy - this.tileSize)
                 }
             }
         }
@@ -513,19 +508,30 @@ class Starfield {
         this.numStars = this.starsX.length
     }
 
+    getColor(galaxy, animLength, min, max) {
+        let remainder = galaxy.ticks % animLength
+        let animPortion = remainder / animLength
+        let opacity = Math.sin(animPortion * PI * 2)
+
+        let color = min + Math.floor(opacity * (max - min))
+        let hex = color.toString(16)
+        hex = ('00' + hex).substr(-2)
+        return '#' + hex + hex + hex
+    }
+
     updateOffset(x, y) {
         this.offsetx -= x / this.offsetScale
         this.offsety -= y / this.offsetScale
-        if (this.offsetx > this.tileSize / 2) this.offsetx -= this.tileSize
-        else if (this.offsetx < -this.tileSize / 2) this.offsetx += this.tileSize
-        if (this.offsety > this.tileSize / 2) this.offsety -= this.tileSize
-        else if (this.offsety < -this.tileSize / 2) this.offsety += this.tileSize
+        if (this.offsetx > SCREEN_SIZE / 2) this.offsetx -= this.tileSize
+        if (this.offsetx < -SCREEN_SIZE / 2) this.offsetx += this.tileSize
+        if (this.offsety > SCREEN_SIZE / 2) this.offsety -= this.tileSize
+        if (this.offsety < -SCREEN_SIZE / 2) this.offsety += this.tileSize
     }
 
     draw(context) {
         for (var i = 0; i < this.numStars; i++) {
-            let x = (this.starsX[i] * this.scale) + this.offsetx + SCREEN_SIZE / 2
-            let y = (this.starsY[i] * this.scale) + this.offsety + SCREEN_SIZE / 2
+            let x = this.starsX[i] + this.offsetx + SCREEN_SIZE / 2
+            let y = this.starsY[i] + this.offsety + SCREEN_SIZE / 2
             context.fillRect(x, y, 1, 1)
         }
     }
@@ -1451,8 +1457,8 @@ class Flock {
         this.sepForce = -2.0
 
         this.exploreForce = clone.exploreForce || randFloat(rng, 1, 10)
-        this.avatarForce = clone.avatarForce || randFloat(rng, -1, 1)
-        this.friendForce = clone.friendForce || randFloat(rng, Math.max(0, this.avatarForce), 1.5)
+        this.avatarForce = clone.avatarForce || randFloat(rng, -1, 0.5)
+        this.friendForce = clone.friendForce || randFloat(rng, Math.max(0, this.avatarForce), 1)
         this.curiousRate = clone.curiousRate || randFloat(rng, 0, 0.1)
 
         this.friction = clone.friction || randFloat(rng, 0, 0.5)
