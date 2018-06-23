@@ -1,7 +1,12 @@
-​A game where you explore an infinite universe and befriend aliens. Tap or click the screen to move your ship. Keep an eye on your fuel meter around the outside edge!
+Xyzygy
+======​
+
+A game where you explore an infinite universe and befriend aliens. Tap or click the screen to move your ship. Keep an eye on your fuel meter around the outside edge!
 
 TO-DO:
 - bug: too easy to drop multiple gifts at once (maybe add separate button or delay between drops?)
+- better mobile support
+- background music
 
 STRETCH GOALS:
 - behavior
@@ -26,3 +31,5 @@ STRETCH GOALS:
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
     - your ship has momentum
+- better performance on Firefox
+- procedural soundtrack and/or sound effects

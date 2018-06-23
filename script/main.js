@@ -1,4 +1,4 @@
-let DEBUG = true
+let DEBUG = false
 let ZOOM = 1
 let FPS = 60
 let RANDOM_SEED = 42
@@ -44,6 +44,8 @@ let TRAIL_TIME = 5
 let SECTOR = 0
 let POS = 1
 let RADIUS = 2
+
+let paused = false
 
 let randFloat = (rng, min, max) => rng() * (max - min) + min
 let randInt = (rng, min, max) => Math.floor(rng() * (max - min) + min)
@@ -152,6 +154,8 @@ class Game {
 
         el.addEventListener('contextmenu', e => e.preventDefault())
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
+
+        this.update = this.update.bind(this)
     }
 
     startMoving(e) {
@@ -226,28 +230,32 @@ class Game {
     }
 
     update() {
-        this.moveAvatar()
+        if (!paused) {
+            this.moveAvatar()
 
-        this.canvas.update(this.galaxy)
+            this.canvas.update(this.galaxy)
 
-        if (DEBUG) {
-            this.canvas.context.font = '12px sans-serif'
-            this.canvas.context.fillStyle = 'hotpink'
-            this.canvas.context.fillText(`${this.galaxy.currentSector[0]}, ${this.galaxy.currentSector[1]}`, SCREEN_SIZE / 2, 22)
+            if (DEBUG) {
+                this.canvas.context.font = '12px sans-serif'
+                this.canvas.context.fillStyle = 'hotpink'
+                this.canvas.context.fillText(`${this.galaxy.currentSector[0]}, ${this.galaxy.currentSector[1]}`, SCREEN_SIZE / 2, 22)
 
-            this.canvas.context.font = '24px sans-serif'
-            this.canvas.context.fillStyle = 'hotpink'
-            this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
+                this.canvas.context.font = '24px sans-serif'
+                this.canvas.context.fillStyle = 'hotpink'
+                this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
+            }
         }
+
+        window.requestAnimationFrame(this.update)
     }
 
     start() {
-        this.interval = setInterval(this.update.bind(this), 1000 / FPS)
+        paused = false
+        this.update()
     }
 
     stop() {
-        clearInterval(this.interval)
-        this.interval = null
+        paused = true
     }
 
 }
@@ -796,7 +804,6 @@ class Planet {
     addBuilding(galaxy) {
         let numBuildings = Math.min(this.maxBuildings, (this.numBuildings || 0) + 1)
         this.setCache(galaxy, 'numBuildings', numBuildings)
-        console.log('add building', numBuildings, this.maxBuildings)
     }
 
     generateFuel(galaxy) {
@@ -836,18 +843,31 @@ class Planet {
     }
 
     drawGift(canvas, galaxy) {
-        let ticksPerRotation = (PI * 2) / GIFT_SPEED
-        let remainderTicks = galaxy.ticks % ticksPerRotation
-        let rotationPortion = remainderTicks / ticksPerRotation
-        let angle = this.startAngle + (rotationPortion * PI * 2)
-
-        let relPos = [
-            Math.cos(angle) * (this.r + GIFT_DISTANCE),
-            Math.sin(angle) * (this.r + GIFT_DISTANCE)
+        let angle = this.startAngle
+        let height = 10
+        let basePoint = [
+            this.pos[0] + Math.cos(angle) * this.r,
+            this.pos[1] + Math.sin(angle) * this.r
         ]
-        let giftPos = add(this.pos, relPos)
+        let topPoint = [
+            this.pos[0] + Math.cos(angle) * (this.r + height),
+            this.pos[1] + Math.sin(angle) * (this.r + height)
+        ]
+        // canvas.drawCircle(this.sector, basePoint)
+        canvas.drawLine(this.sector, basePoint, this.sector, topPoint)
 
-        canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
+        // let ticksPerRotation = (PI * 2) / GIFT_SPEED
+        // let remainderTicks = galaxy.ticks % ticksPerRotation
+        // let rotationPortion = remainderTicks / ticksPerRotation
+        // let angle = this.startAngle + (rotationPortion * PI * 2)
+
+        // let relPos = [
+        //     Math.cos(angle) * (this.r + GIFT_DISTANCE),
+        //     Math.sin(angle) * (this.r + GIFT_DISTANCE)
+        // ]
+        // let giftPos = add(this.pos, relPos)
+
+        // canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
     }
 
     update(galaxy) {
@@ -920,7 +940,8 @@ class Planet {
         this.drawTexture(canvas)
 
         // draw gifts
-        if (this.hasGift) this.drawGift(canvas, galaxy)
+        // if (this.hasGift) this.drawGift(canvas, galaxy)
+        this.drawGift(canvas, galaxy)
     }
 
 }
