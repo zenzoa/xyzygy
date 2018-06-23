@@ -74,6 +74,9 @@ let GIFT_RADIUS = 3
 let GIFT_DISTANCE = 10
 let MAX_GIFTS = 6
 
+let TRAIL_LENGTH = 10
+let TRAIL_TIME = 5
+
 let SECTOR = 0
 let POS = 1
 let RADIUS = 2
@@ -191,7 +194,15 @@ class Game {
         this.mouseDown = true
         this.changeDirection(e)
 
-        this.dropGift()
+        let mousePos = sub(this.mousePos, this.canvas.cameraOffset)
+        let diff = sub(mousePos, this.avatar.pos)
+        let sqDist = square(diff)
+        let maxDist = this.avatar.r + GIFT_DISTANCE + GIFT_RADIUS
+        if (sqDist < maxDist * maxDist) {
+            this.avatar.changeShip()
+        }
+
+        // this.dropGift()
     }
 
     stopMoving() {
@@ -403,7 +414,7 @@ class Canvas {
         if (fuel <= 0) this.drawEndScreen()
     }
 
-    drawTrails(flocks) {
+    drawTrails(flocks, avatar) {
         let boidTrails = []
         flocks.forEach(flock => {
             flock.boids.forEach(boid => {
@@ -415,12 +426,17 @@ class Canvas {
             })
         })
 
-        for(var i = 0; i <= 20; i++) {
+        boidTrails.push({
+            sector: avatar.sector,
+            segments: avatar.trailSegments.concat(avatar.backPos)
+        })
+
+        for(var i = 0; i < TRAIL_LENGTH; i++) {
             this.context.lineWidth = Math.min(0.1, Math.max(0.01, i * 0.05))
             boidTrails.forEach(trail => {
                 let seg1 = trail.segments[i]
                 let seg2 = trail.segments[i+1]
-                if (seg1 && seg2) this.drawLine(trail.sector, seg1, trail.sector, seg2)
+                if (seg1 && seg2) this.drawLine(seg1[0], [seg1[1], seg1[2]], seg2[0], [seg2[1], seg2[2]])
             })
         }
     }
@@ -644,7 +660,7 @@ class Galaxy {
 
         planets.forEach(planet => planet.draw(canvas, this))
 
-        canvas.drawTrails(flocks)
+        canvas.drawTrails(flocks, this.avatar)
 
         canvas.context.lineWidth = 1
         planets.forEach(planet => planet.drawFuel(canvas, this))
@@ -934,6 +950,81 @@ class Planet {
 
 }
 
+class Ship {
+    static applyForce(self, force) {
+        self.acc = add(self.acc, force)
+    }
+
+    static seek(target, maxSpeed, maxForce, absPos, vel) {
+        let desired = sub(target, absPos)
+        desired = scale(desired, maxSpeed)
+        let steer = sub(desired, vel)
+        steer = limit(steer, maxForce)
+
+        return steer
+    }
+
+    static arrive(target, distance, maxSpeed, maxForce, absPos, vel) {
+        let desired = sub(target, absPos)
+        let d = mag(desired)
+        if (d < distance) {
+            let m = mapValue(d, 0, distance, 0, maxSpeed)
+            desired = scale(desired, m)
+        }
+        else {
+            desired = scale(desired, maxSpeed)
+        }
+        let steer = sub(desired, vel)
+        steer = limit(steer, maxForce)
+
+        return steer
+    }
+
+    static wander(target, radius) {
+        let angle = Math.random() * PI * 2
+        let vector = [Math.cos(angle) * radius, Math.sin(angle) * radius]
+        let goal = add(target, vector)
+        return goal
+    }
+
+    static updateTrail(self) {
+        self.trailTicks++
+        if (self.trailTicks >= TRAIL_TIME) {
+            self.trailTicks = 0
+            self.trailSegments.push([self.sector, self.backPos[0], self.backPos[1]])
+            if (self.trailSegments.length > TRAIL_LENGTH) self.trailSegments.shift()
+        }
+    }
+
+    static draw(canvas, r, bez1, bez2, sector, pos, angle) {
+        let offset = canvas.offset(sector)
+        let x = offset[0] + pos[0]
+        let y = offset[1] + pos[1]
+
+        let ctx = canvas.context
+        r = r * 0.75
+        bez1 = scale(bez1, r)
+        bez2 = scale(bez2, r)
+
+        ctx.beginPath()
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(angle)
+        ctx.moveTo(-r, 0)
+        ctx.bezierCurveTo(
+            bez1[0], -bez1[1],
+            bez2[0], -bez2[1],
+            r, 0)
+        ctx.bezierCurveTo(
+            bez2[0], bez2[1],
+            bez1[0], bez1[1],
+            -r, 0)
+        ctx.fill()
+        ctx.stroke()
+        ctx.restore()
+    }
+}
+
 class Avatar {
 
     constructor(sector, pos) {
@@ -942,8 +1033,11 @@ class Avatar {
         this.vel = [0, 0]
         this.acc = [0, 0]
         this.absPos = absPosition(sector, pos)
+        this.backPos = this.pos.slice()
         this.r = 10
         this.angle = 0
+
+        this.changeShip()
 
         this.maxSpeed = 5
         this.maxForce = 0.9
@@ -954,6 +1048,14 @@ class Avatar {
         this.fuel = 1
 
         this.giftAngle = 0
+
+        this.trailSegments = []
+        this.trailTicks = 0
+    }
+
+    changeShip() {
+        this.bezPoint1 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
+        this.bezPoint2 = scale(sub([Math.random(), Math.random()], [0.5, 0.5]), 2)
     }
 
     applyForce(force) {
@@ -1008,6 +1110,7 @@ class Avatar {
         this.pos = add(this.pos, this.vel)
         this.acc = [0, 0]
         this.absPos = absPosition(this.sector, this.pos)
+        this.backPos = sub(this.pos, [Math.cos(this.angle) * this.r * 0.75, Math.sin(this.angle) * this.r * 0.75])
     }
 
     update(galaxy) {
@@ -1015,6 +1118,8 @@ class Avatar {
         this.avoidObstacles(galaxy)
 
         this.updatePos()
+
+        Ship.updateTrail(this)
     }
 
     drawGifts(canvas) {
@@ -1038,7 +1143,7 @@ class Avatar {
     draw(canvas, galaxy) {
         this.update(galaxy)
 
-        this.drawGifts(canvas)
+        // this.drawGifts(canvas)
 
         let offset = canvas.offset(this.sector)
         let x = offset[0] + this.pos[0]
@@ -1048,13 +1153,7 @@ class Avatar {
             this.angle = Math.atan2(this.vel[1], this.vel[0])
         }
 
-        canvas.context.save()
-        canvas.context.beginPath()
-        canvas.context.translate(x, y)
-        canvas.context.rotate(this.angle)
-        canvas.context.rect(-this.r, -this.r, this.r * 2, this.r * 2)
-        canvas.context.fill()
-        canvas.context.restore()
+        Ship.draw(canvas, this.r * 1.5, this.bezPoint1, this.bezPoint2, this.sector, this.pos, this.angle)
     }
 
 }
@@ -1086,45 +1185,23 @@ class Boid {
         this.sightSquared = this.sightDist * this.sightDist
 
         this.trailSegments = []
-        this.trailLength = this.flock.trailLength
-        this.trailTime = 5
         this.trailTicks = 0
     }
 
     applyForce(force) {
-        this.acc = add(this.acc, force)
+        Ship.applyForce(this, force)
     }
 
     seek(target) {
-        let desired = sub(target, this.absPos)
-        desired = scale(desired, this.flock.maxSpeed)
-        let steer = sub(desired, this.vel)
-        steer = limit(steer, this.flock.maxForce)
-
-        return steer
+        return Ship.seek(target, this.flock.maxSpeed, this.flock.maxForce, this.absPos, this.vel)
     }
 
     arrive(target, distance) {
-        let desired = sub(target, this.absPos)
-        let d = mag(desired)
-        if (d < distance) {
-            let m = mapValue(d, 0, distance, 0, this.flock.maxSpeed)
-            desired = scale(desired, m)
-        }
-        else {
-            desired = scale(desired, this.flock.maxSpeed)
-        }
-        let steer = sub(desired, this.vel)
-        steer = limit(steer, this.flock.maxForce)
-
-        return steer
+        return Ship.arrive(target, distance, this.flock.maxSpeed, this.flock.maxForce, this.absPos, this.vel)
     }
 
     wander(target, radius) {
-        let angle = Math.random() * PI * 2
-        let vector = [Math.cos(angle) * radius, Math.sin(angle) * radius]
-        let goal = add(target, vector)
-        return goal
+        return Ship.wander(target, radius)
     }
 
     seekGifts(galaxy) {
@@ -1309,15 +1386,6 @@ class Boid {
         this.backPos = sub(this.pos, [Math.cos(this.angle) * this.flock.r * 0.75, Math.sin(this.angle) * this.flock.r * 0.75])
     }
 
-    updateTrail() {
-        this.trailTicks++
-        if (this.trailTicks >= this.trailTime) {
-            this.trailTicks = 0
-            this.trailSegments.push(this.backPos)
-            if (this.trailSegments.length > this.trailLength) this.trailSegments.shift()
-        }
-    }
-
     update(galaxy) {
         this.flocking()
         this.avoidObstacles(galaxy)
@@ -1328,7 +1396,7 @@ class Boid {
 
         this.updatePos()
 
-        this.updateTrail()
+        Ship.updateTrail(this)
     }
 
     drawGift(canvas, angle) {
@@ -1345,33 +1413,8 @@ class Boid {
         this.update(galaxy)
         if (!isOnScreen(canvas, this.sector, this.pos, this.flock.r * 2)) return
 
-        let offset = canvas.offset(this.sector)
-        let x = offset[0] + this.pos[0]
-        let y = offset[1] + this.pos[1]
-
         this.angle = Math.atan2(this.vel[1], this.vel[0])
-
-        let ctx = canvas.context
-        let r = this.flock.r * 0.75
-        let bez1 = scale(this.flock.bezPoint1, r)
-        let bez2 = scale(this.flock.bezPoint2, r)
-
-        ctx.beginPath()
-        ctx.save()
-        ctx.translate(x, y)
-        ctx.rotate(this.angle)
-        ctx.moveTo(-r, 0)
-        ctx.bezierCurveTo(
-            bez1[0], -bez1[1],
-            bez2[0], -bez2[1],
-            r, 0)
-        ctx.bezierCurveTo(
-            bez2[0], bez2[1],
-            bez1[0], bez1[1],
-            -r, 0)
-        ctx.fill()
-        ctx.stroke()
-        ctx.restore()
+        Ship.draw(canvas, this.flock.r, this.flock.bezPoint1, this.flock.bezPoint2, this.sector, this.pos, this.angle)
 
         if (this.hasGift) this.drawGift(canvas, this.angle)
     }
@@ -1413,8 +1456,6 @@ class Flock {
         this.curiousRate = clone.curiousRate || randFloat(rng, 0, 0.1)
 
         this.friction = clone.friction || randFloat(rng, 0, 0.5)
-
-        this.trailLength = 10
 
         this.giftsCollected = 0
         this.giftsNeeded = 3
