@@ -4,7 +4,6 @@ Xyzygy
 A game where you explore an infinite universe and befriend aliens. Tap or click the screen to move your ship. Keep an eye on your fuel meter around the outside edge!
 
 TO-DO:
-- bug: too easy to drop multiple gifts at once (maybe add separate button or delay between drops?)
 - better mobile support
 - background music
 

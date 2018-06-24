@@ -36,7 +36,7 @@ let MAX_GIFT_REGEN = FPS * 600
 let GIFT_SPEED = 0.05
 let GIFT_RADIUS = 3
 let GIFT_DISTANCE = 10
-let MAX_GIFTS = 6
+let MAX_GIFTS = 3
 
 let TRAIL_LENGTH = 10
 let TRAIL_TIME = 5
@@ -156,49 +156,64 @@ class Game {
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
 
         this.update = this.update.bind(this)
+
+        this.debounce = 0
+    }
+
+    getMousePos(e) {
+        let offsetX = this.frame.offsetLeft + this.screen.offsetLeft
+        let offsetY = this.frame.offsetTop + this.screen.offsetTop
+        let zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
+        let zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
+        let x = (e.clientX - offsetX) * zoomX
+        let y = (e.clientY - offsetY) * zoomY
+        return [x, y]
     }
 
     startMoving(e) {
         this.mouseDown = true
-        this.changeDirection(e)
+        let mousePos = this.getMousePos(e)
 
-        let mousePos = sub(this.mousePos, this.canvas.cameraOffset)
-        let diff = sub(mousePos, this.avatar.pos)
-        let sqDist = square(diff)
-        let maxDist = this.avatar.r + GIFT_DISTANCE + GIFT_RADIUS
-        if (sqDist < maxDist * maxDist) {
-            this.avatar.changeShip()
-        }
-
-        // this.dropGift()
+        if (this.pushGiftButton(mousePos)) this.dropGift()
+        else this.changeDirection(mousePos)
     }
 
     stopMoving() {
         this.mouseDown = false
     }
 
-    changeDirection(e) {
+    changeDirection(mousePos) {
+        if (mousePos.clientX) mousePos = this.getMousePos(mousePos)
         if (this.mouseDown) {
-            let offsetX = this.frame.offsetLeft + this.screen.offsetLeft
-            let offsetY = this.frame.offsetTop + this.screen.offsetTop
-            let zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
-            let zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
-            let x = (e.clientX - offsetX) * zoomX
-            let y = (e.clientY - offsetY) * zoomY
-            this.mousePos = [x, y]
+            this.mousePos = mousePos
         }
     }
 
+    pushGiftButton(mousePos) {
+        if (this.debounce > 0) return
+
+        let r = 20
+        let buttons = Gift.buttons(this.galaxy)
+        let buttonPushed = false
+
+        buttons.forEach(buttonPos => {
+            let diff = sub(mousePos, buttonPos)
+            let sqDist = square(diff)
+            if (sqDist <= r * r) {
+                buttonPushed = true
+                this.debounce = 60
+            }
+        })
+
+        return buttonPushed
+    }
+
     dropGift() {
-        if (this.avatar.gifts <= 0) return
-        let mousePos = sub(this.mousePos, this.canvas.cameraOffset)
-        let diff = sub(mousePos, this.avatar.pos)
-        let sqDist = square(diff)
-        let maxDist = this.avatar.r + GIFT_DISTANCE + GIFT_RADIUS
-        if (sqDist < maxDist * maxDist) {
-            this.galaxy.avatar.gifts--
-            this.galaxy.gifts.push([this.galaxy.avatar.sector, this.galaxy.avatar.pos, GIFT_RADIUS])
-        }
+        let avatar = this.galaxy.avatar
+        avatar.gifts--
+        let pos = add(avatar.pos, [Math.cos(avatar.angle) * avatar.r * 3, Math.sin(avatar.angle) * avatar.r * 3])
+        this.galaxy.gifts.push([ avatar.sector, pos ])
+        this.mouseDown = false
     }
 
     moveAvatar() {
@@ -235,15 +250,22 @@ class Game {
 
             this.canvas.update(this.galaxy)
 
-            if (DEBUG) {
-                this.canvas.context.font = '12px sans-serif'
-                this.canvas.context.fillStyle = 'hotpink'
-                this.canvas.context.fillText(`${this.galaxy.currentSector[0]}, ${this.galaxy.currentSector[1]}`, SCREEN_SIZE / 2, 22)
+            if (this.debounce > 0) this.debounce--
 
-                this.canvas.context.font = '24px sans-serif'
-                this.canvas.context.fillStyle = 'hotpink'
-                this.canvas.context.fillText(Math.floor(this.avatar.fuel * 100), SCREEN_SIZE / 2, SCREEN_SIZE - 22)
-            }
+            // print sector id
+            let sector = this.galaxy.currentSector
+
+            let x = Math.abs(sector[0]).toString(36)
+            if (sector[0] < 0) x = 'X' + x
+            x = ('0000' + x).substr(-4)
+
+            let y = Math.abs(sector[1]).toString(36)
+            if (sector[1] < 0) y = 'X' + y
+            y = ('0000' + y).substr(-4)
+
+            this.canvas.context.font = '10px monospace'
+            this.canvas.context.fillStyle = '#999'
+            this.canvas.context.fillText(`${x}-${y}`, SCREEN_SIZE / 2 - 20, 30)
         }
 
         window.requestAnimationFrame(this.update)
@@ -315,7 +337,7 @@ class Canvas {
         this.context.stroke()
     }
 
-    drawCircle(sector, pos, r, fill) {
+    drawCircle(sector, pos, r, fill, noStroke) {
         let offset = this.offset(sector)
         let x = offset[0] + pos[0]
         let y = offset[1] + pos[1]
@@ -324,7 +346,7 @@ class Canvas {
         this.context.arc(x, y, r, 0, PI * 2)
 
         if (fill) this.context.fill()
-        this.context.stroke()
+        if (!noStroke) this.context.stroke()
     }
 
     drawRect(sector, pos, width, height, fill) {
@@ -386,6 +408,21 @@ class Canvas {
         if (fuel <= 0) this.drawEndScreen()
     }
 
+    drawGiftButtons(galaxy) {
+        this.context.lineWidth = 1
+        this.context.strokeStyle = 'black'
+        this.context.fillStyle = 'white'
+
+        let r = 20
+        let buttons = Gift.buttons(galaxy)
+
+        buttons.forEach(buttonPos => {
+            this.drawCircle(null, buttonPos, r + 4, false)
+            this.drawCircle(null, buttonPos, r, true)
+            Gift.draw(this, galaxy, -PI / 2, null, buttonPos, -5)
+        })
+    }
+
     drawTrails(flocks, avatar) {
         let boidTrails = []
         flocks.forEach(flock => {
@@ -442,6 +479,7 @@ class Canvas {
         this.context.restore()
 
         // draw UI elements
+        this.drawGiftButtons(galaxy)
         this.drawFuel(galaxy)
     }
 
@@ -632,13 +670,15 @@ class Galaxy {
         canvas.context.lineWidth = 1
         canvas.context.fillStyle = 'black'
         stars.forEach(star => star.draw(canvas, this))
-        this.gifts.forEach(gift => Gift.draw(gift, canvas, this))
 
         canvas.context.fillStyle = 'white'
         canvas.context.lineWidth = 0.1
         orbits.forEach(orbit => orbit.draw(canvas, this))
 
-        canvas.context.lineWidth = 10
+        if (this.gifts.length > 0) canvas.context.lineWidth = 1
+        this.gifts.forEach(gift => Gift.draw(canvas, this, -PI / 2, gift[0], gift[1], -5, true))
+
+        if (planets.length > 0) canvas.context.lineWidth = 10
         planets.forEach(planet => planet.drawBuildings(canvas, this))
 
         planets.forEach(planet => planet.draw(canvas, this))
@@ -842,34 +882,6 @@ class Planet {
         this.absPos = absPosition(this.sector, this.pos)
     }
 
-    drawGift(canvas, galaxy) {
-        let angle = this.startAngle
-        let height = 10
-        let basePoint = [
-            this.pos[0] + Math.cos(angle) * this.r,
-            this.pos[1] + Math.sin(angle) * this.r
-        ]
-        let topPoint = [
-            this.pos[0] + Math.cos(angle) * (this.r + height),
-            this.pos[1] + Math.sin(angle) * (this.r + height)
-        ]
-        // canvas.drawCircle(this.sector, basePoint)
-        canvas.drawLine(this.sector, basePoint, this.sector, topPoint)
-
-        // let ticksPerRotation = (PI * 2) / GIFT_SPEED
-        // let remainderTicks = galaxy.ticks % ticksPerRotation
-        // let rotationPortion = remainderTicks / ticksPerRotation
-        // let angle = this.startAngle + (rotationPortion * PI * 2)
-
-        // let relPos = [
-        //     Math.cos(angle) * (this.r + GIFT_DISTANCE),
-        //     Math.sin(angle) * (this.r + GIFT_DISTANCE)
-        // ]
-        // let giftPos = add(this.pos, relPos)
-
-        // canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
-    }
-
     update(galaxy) {
         // move the planet along its orbital path
         this.calcPos(galaxy)
@@ -940,8 +952,7 @@ class Planet {
         this.drawTexture(canvas)
 
         // draw gifts
-        // if (this.hasGift) this.drawGift(canvas, galaxy)
-        this.drawGift(canvas, galaxy)
+        if (this.hasGift) Gift.draw(canvas, galaxy, this.startAngle, this.sector, this.pos, this.r)
     }
 
 }
@@ -1040,7 +1051,7 @@ class Avatar {
         this.seekDist = SECTOR_SIZE / 2
 
         this.target = pos
-        this.gifts = 6
+        this.gifts = 0
         this.fuel = 1
 
         this.giftAngle = 0
@@ -1164,9 +1175,13 @@ class Boid {
         this.sector = sector
 
         let angle = randFloat(Math.random, 0, PI * 2)
-        let dist = this.flock.r
+        let dist = randFloat(Math.random, this.flock.r, SECTOR_SIZE / 2)
         let relPos = [Math.cos(angle) * dist, Math.sin(angle) * dist]
         this.pos = add(this.flock.planet.pos, relPos)
+        if (this.pos[0] < 0) this.pos[0] = 0
+        if (this.pos[1] < 0) this.pos[1] = 0
+        if (this.pos[0] > SECTOR_SIZE) this.pos[0] = SECTOR_SIZE
+        if (this.pos[1] > SECTOR_SIZE) this.pos[1] = SECTOR_SIZE
 
         this.absPos = absPosition(this.sector, this.pos)
         this.vel = [0, 0]
@@ -1217,7 +1232,7 @@ class Boid {
             }
 
             // pick up gifts when you hit them
-            let touchDist = gift[RADIUS] + this.flock.r
+            let touchDist = GIFT_RADIUS + this.flock.r
             if (square(diff) < touchDist * touchDist) {
                 // if (this.flock.giftsCollected >= this.flock.giftsNeeded) {
                 //     console.log('splinter!!')
@@ -1395,14 +1410,14 @@ class Boid {
         Ship.updateTrail(this)
     }
 
-    drawGift(canvas, angle) {
+    drawGift(canvas, galaxy) {
         let relPos = [
-            Math.cos(angle) * (this.flock.r + GIFT_DISTANCE / 2),
-            Math.sin(angle) * (this.flock.r + GIFT_DISTANCE / 2)
+            Math.cos(this.angle) * (this.flock.r + GIFT_DISTANCE),
+            Math.sin(this.angle) * (this.flock.r + GIFT_DISTANCE)
         ]
         let giftPos = add(this.pos, relPos)
-
-        canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
+        canvas.drawCircle(this.sector, giftPos, 6, true, true)
+        canvas.drawCircle(this.sector, giftPos, 3, false)
     }
 
     draw(canvas, galaxy) {
@@ -1412,7 +1427,7 @@ class Boid {
         this.angle = Math.atan2(this.vel[1], this.vel[0])
         Ship.draw(canvas, this.flock.r, this.flock.bezPoint1, this.flock.bezPoint2, this.sector, this.pos, this.angle)
 
-        if (this.hasGift) this.drawGift(canvas, this.angle)
+        if (this.hasGift) this.drawGift(canvas, galaxy)
     }
 
 }
@@ -1531,8 +1546,71 @@ class Flock {
 
 class Gift {
 
-    static draw(gift, canvas, galaxy) {
-        canvas.drawCircle(gift[SECTOR], gift[POS], gift[RADIUS], true)
+    static draw(canvas, galaxy, baseAngle, sector, pos, r, bubble) {
+        if (typeof r === 'undefined') r = 0
+
+        let animLength = 120
+        let remainder = galaxy.ticks % animLength
+        let animPortion = remainder / animLength
+        let stemAngle = baseAngle + Math.sin(animPortion * PI * 2) * (PI / 24)
+
+        let basePoint = [
+            pos[0] + Math.cos(baseAngle) * r,
+            pos[1] + Math.sin(baseAngle) * r
+        ]
+
+        if (bubble) {
+            canvas.drawCircle(sector, [pos[0], pos[1] - 1], 12, true, true)
+        }
+
+        let stemLength = 10
+        let stem = [
+            basePoint[0] + Math.cos(stemAngle) * stemLength,
+            basePoint[1] + Math.sin(stemAngle) * stemLength
+        ]
+
+        let leafAngle = (PI / 4) + Math.cos(animPortion * PI * 2) * (PI / 24)
+        let leafLength = stemLength * 0.9
+        let leaf1 = [
+            basePoint[0] + Math.cos(stemAngle + leafAngle) * leafLength,
+            basePoint[1] + Math.sin(stemAngle + leafAngle) * leafLength
+        ]
+        let leaf2 = [
+            basePoint[0] + Math.cos(stemAngle - leafAngle) * leafLength,
+            basePoint[1] + Math.sin(stemAngle - leafAngle) * leafLength
+        ]
+
+        canvas.drawLine(sector, basePoint, sector, stem)
+        canvas.drawLine(sector, basePoint, sector, leaf1)
+        canvas.drawLine(sector, basePoint, sector, leaf2)
+        canvas.drawCircle(sector, stem, 0.5)
+        canvas.drawCircle(sector, stem, 1)
+        canvas.drawCircle(sector, stem, 1.5)
+    }
+
+    static buttons(galaxy) {
+        let giftButtons = []
+
+        let numGifts = galaxy.avatar.gifts
+        let halfScreen = SCREEN_SIZE / 2
+        let r = 20
+        let dist = halfScreen - r - 30
+
+        let angles = []
+        if (numGifts === 1) angles = [PI / 2]
+        if (numGifts === 2) angles = [PI / 2 - PI / 24, PI / 2 + PI / 24]
+        if (numGifts === 3) angles = [PI / 2 - PI / 12, PI / 2, PI / 2 + PI / 12]
+
+        for (var i = 0; i < numGifts; i++) {
+            let angle = angles[i]
+            let pos = [
+                halfScreen + Math.cos(angle) * dist,
+                halfScreen + Math.sin(angle) * dist
+            ]
+            giftButtons.push(pos)
+        }
+
+        return giftButtons
     }
 
 }
