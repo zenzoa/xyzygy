@@ -303,9 +303,9 @@ class Canvas {
             SCREEN_SIZE / 2 - SECTOR_SIZE / 2
         ]
 
-        this.starfield1 = new Starfield(1, 4)
-        this.starfield2 = new Starfield(2, 2)
-        this.starfield3 = new Starfield(4, 1)
+        this.starfield1 = new Starfield(1, 40)
+        this.starfield2 = new Starfield(2, 20)
+        this.starfield3 = new Starfield(4, 10)
     }
 
     get screenCenter() {
@@ -381,13 +381,13 @@ class Canvas {
     }
 
     drawStarfields(galaxy) {
-        this.context.fillStyle = this.starfield1.getColor(galaxy, 600, 200, 225)
+        this.context.fillStyle = this.starfield1.getColor(galaxy, 600, 200, 210)
         this.starfield1.draw(this.context)
 
-        this.context.fillStyle = this.starfield2.getColor(galaxy, 500, 175, 200)
+        this.context.fillStyle = this.starfield2.getColor(galaxy, 500, 170, 180)
         this.starfield2.draw(this.context)
 
-        this.context.fillStyle = this.starfield3.getColor(galaxy, 400, 150, 175)
+        this.context.fillStyle = this.starfield3.getColor(galaxy, 400, 150, 160)
         this.starfield3.draw(this.context)
     }
 
@@ -490,8 +490,9 @@ class Starfield {
     constructor(scale, offsetScale, width, gridSize) {
         this.scale = scale
         this.offsetScale = offsetScale
-        this.width = (width || 1) * (SCREEN_SIZE / 10)
         this.gridSize = gridSize || 10
+        this.width = SCREEN_SIZE / this.gridSize / this.scale
+        console.log(this.width)
         this.offsetx = 0
         this.offsety = 0
         this.tileSize = this.width * this.gridSize * this.scale
@@ -500,7 +501,7 @@ class Starfield {
         this.starsY = []
         for (var x = 0; x < this.width; x++) {
             for (var y = 0; y < this.width; y++) {
-                let isStar = Math.abs(noise.simplex2(x, y)) < 0.1
+                let isStar = Math.abs(noise.simplex2(x, y)) < 0.01
                 if (isStar) {
                     let posx = (x + Math.random()) * this.gridSize * this.scale
                     let posy = (y + Math.random()) * this.gridSize * this.scale
