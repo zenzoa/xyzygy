@@ -29,6 +29,5 @@ STRETCH GOALS:
     - you can leave beacons to fast-travel back to that sector
     - you get a map or something at the end, showing planets you visited and aliens you befriended
     - keyboard controls
-    - your ship has momentum
 - better performance on Firefox
 - procedural soundtrack and/or sound effects

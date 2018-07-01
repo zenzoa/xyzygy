@@ -45,6 +45,8 @@ let SECTOR = 0
 let POS = 1
 let RADIUS = 2
 
+let MOUSE_DOWN = false
+
 let paused = false
 
 let randFloat = (rng, min, max) => rng() * (max - min) + min
@@ -141,7 +143,7 @@ class Game {
         this.interval = null
 
         // add event handlers
-        this.mouseDown = false
+        MOUSE_DOWN = false
         this.mousePos = [0, 0]
 
         el.addEventListener('mousedown', e => this.startMoving(e))
@@ -171,7 +173,7 @@ class Game {
     }
 
     startMoving(e) {
-        this.mouseDown = true
+        MOUSE_DOWN = true
         let mousePos = this.getMousePos(e)
 
         if (this.pushGiftButton(mousePos)) this.dropGift()
@@ -179,14 +181,12 @@ class Game {
     }
 
     stopMoving() {
-        this.mouseDown = false
+        MOUSE_DOWN = false
     }
 
     changeDirection(mousePos) {
         if (mousePos.clientX) mousePos = this.getMousePos(mousePos)
-        if (this.mouseDown) {
-            this.mousePos = mousePos
-        }
+        if (MOUSE_DOWN) this.mousePos = mousePos
     }
 
     pushGiftButton(mousePos) {
@@ -213,13 +213,14 @@ class Game {
         avatar.gifts--
         let pos = add(avatar.pos, [Math.cos(avatar.angle) * avatar.r * 3, Math.sin(avatar.angle) * avatar.r * 3])
         this.galaxy.gifts.push([ avatar.sector, pos ])
-        this.mouseDown = false
+        MOUSE_DOWN = false
     }
 
     moveAvatar() {
         // get movement direction
-        if (this.mouseDown) this.avatar.target = sub(this.mousePos, this.canvas.cameraOffset)
-        else this.avatar.target = this.avatar.pos
+        // if (this.mouseDown) this.avatar.target = sub(this.mousePos, this.canvas.cameraOffset)
+        // else this.avatar.target = this.avatar.pos
+        if (MOUSE_DOWN) this.avatar.target = sub(this.mousePos, this.canvas.cameraOffset)
 
         // re-center the galaxy on whatever sector the avatar is now in
         let mx = 0
@@ -492,7 +493,6 @@ class Starfield {
         this.offsetScale = offsetScale
         this.gridSize = gridSize || 10
         this.width = SCREEN_SIZE / this.gridSize / this.scale
-        console.log(this.width)
         this.offsetx = 0
         this.offsety = 0
         this.tileSize = this.width * this.gridSize * this.scale
@@ -1114,15 +1114,16 @@ class Avatar {
     }
 
     updatePos() {
+        if (!MOUSE_DOWN) this.vel = scale(this.vel, 0.9)
         this.vel = limit(add(this.vel, this.acc), this.maxSpeed)
         this.pos = add(this.pos, this.vel)
-        this.acc = [0, 0]
+        this.acc = scale(this.acc, 0.5)
         this.absPos = absPosition(this.sector, this.pos)
         this.backPos = sub(this.pos, [Math.cos(this.angle) * this.r * 0.75, Math.sin(this.angle) * this.r * 0.75])
     }
 
     update(galaxy) {
-        this.seekMouse(galaxy)
+        if (MOUSE_DOWN) this.seekMouse(galaxy)
         this.avoidObstacles(galaxy)
 
         this.updatePos()
@@ -1130,28 +1131,8 @@ class Avatar {
         Ship.updateTrail(this)
     }
 
-    drawGifts(canvas) {
-        let numGifts = this.gifts
-
-        this.giftAngle += GIFT_SPEED
-        if (this.giftAngle > PI * 2) this.giftAngle -= PI * 2
-        let angleOffset = (PI * 2) / MAX_GIFTS
-
-        for (var i = 0; i < numGifts; i++) {
-            let angle = this.giftAngle + (i * angleOffset)
-            let relPos = [
-                Math.cos(angle) * (this.r + GIFT_DISTANCE),
-                Math.sin(angle) * (this.r + GIFT_DISTANCE)
-            ]
-            let giftPos = add(this.pos, relPos)
-            canvas.drawCircle(this.sector, giftPos, GIFT_RADIUS, true)
-        }
-    }
-
     draw(canvas, galaxy) {
         this.update(galaxy)
-
-        // this.drawGifts(canvas)
 
         let offset = canvas.offset(this.sector)
         let x = offset[0] + this.pos[0]
