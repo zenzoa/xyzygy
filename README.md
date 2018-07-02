@@ -5,7 +5,6 @@ A game where you explore an infinite universe and befriend aliens. Tap or click 
 
 TO-DO:
 - better mobile support
-- background music
 
 STRETCH GOALS:
 - behavior

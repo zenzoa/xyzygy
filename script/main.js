@@ -119,7 +119,6 @@ let isOnScreen = (canvas, sector, pos, r) => {
 class Game {
 
     constructor(canvas, avatar) {
-        this.screen = document.getElementById('screen')
         this.frame = document.getElementById('frame')
 
         // setup canvas
@@ -142,6 +141,10 @@ class Game {
         // initialize timer interval (used when starting the game timer)
         this.interval = null
 
+        // bind methods
+        this.update = this.update.bind(this)
+        this.adjustSize = this.adjustSize.bind(this)
+
         // add event handlers
         MOUSE_DOWN = false
         this.mousePos = [0, 0]
@@ -157,16 +160,29 @@ class Game {
         el.addEventListener('contextmenu', e => e.preventDefault())
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
 
-        this.update = this.update.bind(this)
+        this.adjustSize()
+        window.addEventListener('resize', this.adjustSize)
 
         this.debounce = 0
     }
 
+    adjustSize() {
+        let bodyWidth = window.innerWidth
+        let bodyHeight = window.innerHeight
+        let dim = Math.min(bodyWidth, bodyHeight) - 20
+        let offsetLeft = (bodyWidth - dim) / 2
+        let offsetTop = (bodyHeight - dim) / 2
+        this.frame.style.marginLeft = offsetLeft + 'px'
+        this.frame.style.marginTop = offsetTop + 'px'
+        this.frame.style.width = dim + 'px'
+        this.frame.style.height = dim + 'px'
+    }
+
     getMousePos(e) {
-        let offsetX = this.frame.offsetLeft + this.screen.offsetLeft
-        let offsetY = this.frame.offsetTop + this.screen.offsetTop
-        let zoomX = SCREEN_SIZE / this.screen.offsetWidth / ZOOM
-        let zoomY = SCREEN_SIZE / this.screen.offsetHeight / ZOOM
+        let offsetX = this.frame.offsetLeft
+        let offsetY = this.frame.offsetTop
+        let zoomX = SCREEN_SIZE / this.frame.offsetWidth / ZOOM
+        let zoomY = SCREEN_SIZE / this.frame.offsetHeight / ZOOM
         let x = (e.clientX - offsetX) * zoomX
         let y = (e.clientY - offsetY) * zoomY
         return [x, y]
