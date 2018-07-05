@@ -1,12 +1,11 @@
-Xyzygy
-======​
+# Xyzygy
 
 A game where you explore an infinite universe and befriend aliens. Tap or click the screen to move your ship. Keep an eye on your fuel meter around the outside edge!
 
-TO-DO:
+## TO-DO
 - better mobile support
 
-STRETCH GOALS:
+## STRETCH GOALS
 - behavior
     - more variety of behaviors in general
     - feeding aliens more makes them more friendly
