@@ -150,11 +150,11 @@ class Game {
         this.mousePos = [0, 0]
 
         el.addEventListener('mousedown', e => this.startMoving(e))
-        document.addEventListener('mousemove', e => this.changeDirection(e))
+        document.addEventListener('mousemove', e => this.changeDirection(e, e))
         document.addEventListener('mouseup', e => this.stopMoving(e))
 
         el.addEventListener('touchstart', e => this.startMoving(e.touches[0]))
-        document.addEventListener('touchmove', e => this.changeDirection(e.touches[0]))
+        document.addEventListener('touchmove', e => this.changeDirection(e, e.touches[0]))
         document.addEventListener('touchend', e => this.stopMoving(e.touches[0]))
 
         el.addEventListener('contextmenu', e => e.preventDefault())
@@ -200,7 +200,8 @@ class Game {
         MOUSE_DOWN = false
     }
 
-    changeDirection(mousePos) {
+    changeDirection(e, mousePos) {
+        e.preventDefault()
         if (mousePos.clientX) mousePos = this.getMousePos(mousePos)
         if (MOUSE_DOWN) this.mousePos = mousePos
     }
@@ -1619,5 +1620,7 @@ window.onload = () => {
 
     window.game = new Game()
     window.game.start()
+
+    window.ontouchmove = (e) => e.preventDefault()
 
 }
