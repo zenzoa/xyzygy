@@ -154,13 +154,12 @@ class Game {
         document.addEventListener('mouseup', e => this.stopMoving(e))
 
         el.addEventListener('touchstart', e => this.startMoving(e.touches[0]))
-        document.addEventListener('touchmove', e => this.changeDirection(e, e.touches[0]))
+        document.addEventListener('touchmove', e => this.changeDirection(e, e.touches[0]), { passive: false })
         document.addEventListener('touchend', e => this.stopMoving(e.touches[0]))
 
         // prevent annoying touch-based ui
         el.addEventListener('contextmenu', e => e.preventDefault())
         el.addEventListener('MSHoldVisual', e => e.preventDefault())
-        document.body.addEventListener('touchmove', (e) => e.preventDefault())
 
         this.adjustSize()
         window.addEventListener('resize', this.adjustSize)
