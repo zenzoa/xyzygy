@@ -2,6 +2,8 @@
 
 A game where you explore an infinite universe and befriend aliens. Tap or click the screen to move your ship. Keep an eye on your fuel meter around the outside edge!
 
+Music is ["somber beauty" by fwimmygoat](http://freemusicarchive.org/music/fwimmygoat/).
+
 ## STRETCH GOALS
 - behavior
     - more variety of behaviors in general
