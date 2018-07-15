@@ -149,11 +149,11 @@ class Game {
         MOUSE_DOWN = false
         this.mousePos = [0, 0]
 
-        el.addEventListener('mousedown', e => this.startMoving(e))
+        el.addEventListener('mousedown', e => this.startMoving(e, e))
         document.addEventListener('mousemove', e => this.changeDirection(e, e))
         document.addEventListener('mouseup', e => this.stopMoving(e))
 
-        el.addEventListener('touchstart', e => this.startMoving(e.touches[0]))
+        el.addEventListener('touchstart', e => this.startMoving(e, e.touches[0]), { passive: false })
         document.addEventListener('touchmove', e => this.changeDirection(e, e.touches[0]), { passive: false })
         document.addEventListener('touchend', e => this.stopMoving(e.touches[0]))
 
@@ -189,9 +189,11 @@ class Game {
         return [x, y]
     }
 
-    startMoving(e) {
+    startMoving(e, mousePos) {
+        e.preventDefault()
+
         MOUSE_DOWN = true
-        let mousePos = this.getMousePos(e)
+        mousePos = this.getMousePos(mousePos)
 
         if (this.pushGiftButton(mousePos)) this.dropGift()
         else this.changeDirection(mousePos)
